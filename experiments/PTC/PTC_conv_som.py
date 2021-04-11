@@ -1,13 +1,14 @@
 import os
 import sys
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 import torch
 
-from model.GNN_Conv_SOM_out_conv_act import GNN_Conv_SOM
+from model.GNN_Conv_SOM import GNN_Conv_SOM
 from impl.binGraphClassifier_SOM_Layer import modelImplementation_GraphBinClassifier
-from utils.utils import printParOnFile
+from utils.utils import printParOnFile, longname
 from data_reader.cross_validation_reader import getcross_validation_split
 
 if __name__ == '__main__':
@@ -56,9 +57,9 @@ if __name__ == '__main__':
                 "_som_grid-" + str(som_grids_dim[0]) + "_" + str(som_grids_dim[1]) + \
                 "_som_lr-" + str(som_lr)
 
-    training_log_dir = os.path.join("./test_log/", test_name)
-    if not os.path.exists(training_log_dir):
-        os.makedirs(training_log_dir)
+    training_log_dir = Path.cwd() / "test_log" / test_name
+    training_log_dir = longname(training_log_dir)
+    training_log_dir.mkdir(parents=True,exist_ok=True)
 
     printParOnFile(test_name=test_name, log_dir=training_log_dir,
                    par_list={"dataset_name": dataset_name,

@@ -5,6 +5,13 @@ import torch
 from torch_geometric.utils.convert import to_networkx
 from networkx.algorithms.distance_measures import diameter
 from networkx.algorithms.components import connected_components
+from pathlib import Path
+
+def longname(path):
+    normalized = os.fspath(path.resolve())
+    if not normalized.startswith('\\\\?\\'):
+        normalized = '\\\\?\\' + normalized
+    return Path(normalized)
 
 def printParOnFile(test_name, log_dir, par_list):
 

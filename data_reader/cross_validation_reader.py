@@ -75,12 +75,12 @@ def getcross_validation_split(dataset_path='~/Dataset/MUTAG', dataset_name='MUTA
         for split in [train_ids, test_ids, valid_ids]:
             # print(torch.from_numpy((train_ids if split.find('train') >= 0 else test_ids)[fold_id]))
             # print("---")
-            gdata = dataset[torch.from_numpy(split[fold_id])]
+            gdata = dataset[torch.tensor(split[fold_id], dtype=torch.long)]
 
             loader = DataLoader(gdata,
                                 batch_size=batch_size,
                                 shuffle=True,
-                                num_workers=4)#,
+                                num_workers=0)#, LINUX=Set this to 4
                                 #collate_fn=collate_batch)
             loaders.append(loader)
         splits.append(loaders)
