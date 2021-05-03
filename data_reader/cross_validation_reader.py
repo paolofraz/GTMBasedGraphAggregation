@@ -80,7 +80,9 @@ def getcross_validation_split(dataset_path='~/Dataset/MUTAG', dataset_name='MUTA
             loader = DataLoader(gdata,
                                 batch_size=batch_size,
                                 shuffle=True,
-                                num_workers=0)#, LINUX=Set this to 4
+                                pin_memory=True,
+                                #persistent_workers=True,
+                                num_workers=0)#, TODO LINUX=Set this to 4; https://github.com/pytorch/pytorch/issues/12831
                                 #collate_fn=collate_batch)
             loaders.append(loader)
         splits.append(loaders)

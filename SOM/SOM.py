@@ -9,7 +9,7 @@ class SOM(nn.Module):
     def __init__(self, input_size, out_size=(10, 10), sigma=None, device=None):
         '''
         :param input_size:
-        :param out_size:
+        :param out_size:<
         :param lr:
         :param sigma:
         '''
@@ -39,7 +39,7 @@ class SOM(nn.Module):
                 yield x, y
 
     def _neighborhood_fn(self, input, current_sigma):
-        '''e^(-(input / sigma^2))'''
+        '''Eq (18): e^(-(input / sigma^2))'''
         input.div_(current_sigma ** 2)
         input.neg_()
         input.exp_()
@@ -54,19 +54,20 @@ class SOM(nn.Module):
         '''
 
         n_nodes = x.size()[0]
-        x = x.view(n_nodes, -1, 1).to(self.device)
+        x = x.view(n_nodes, -1, 1).to(self.device)  # add 3rd dimension
         # use the same weights for each row of the input
-        node_weight = self.weight.expand(n_nodes, -1, -1)
+        node_weight = self.weight.expand(n_nodes, -1, -1) # Shape (n_nodes, input_size, out_size[0]*[1])
 
-        dists = self.pdist_fn(x, node_weight)
+        dists = self.pdist_fn(x, node_weight) # Eq (15): distance between a SOM neuron and the input embedding for node v at layer k
 
         # Find best matching unit
-        losses, bmu_indexes = dists.min(dim=1, keepdim=True)
+        losses, bmu_indexes = dists.min(dim=1, keepdim=True) # Eq (16): compute the BMU for each forward pass of the SOM
+                                                             # losses = dist of BMU, w/ (i*,j*)
 
         bmu_locations = self.locations[bmu_indexes]
 
         # coefficenti per i neighborhood
-        distance_squares = self.locations.float() - bmu_locations.float()
+        distance_squares = self.locations - bmu_locations
         distance_squares.pow_(2)
         distance_squares = torch.sum(distance_squares, dim=2)
 
@@ -75,7 +76,7 @@ class SOM(nn.Module):
         else:
             lr_locations = self._neighborhood_fn(distance_squares, self.sigma)
 
-        som_output = torch.exp(-dists.to(self.device) + losses.expand_as(dists).to(self.device)) * lr_locations
+        som_output = torch.exp(-dists.to(self.device) + losses.expand_as(dists).to(self.device)) * lr_locations # Eq (19)
 
         return bmu_locations, losses.sum().div_(n_nodes).item(), som_output
 

@@ -106,10 +106,10 @@ class GNN_Conv_SOM(torch.nn.Module):
 
         edge_index = data.edge_index
 
-        x1 = self.norm1(self.act1(self.conv1(x, edge_index)))
+        x1 = self.norm1(self.act1(self.conv1(x, edge_index))) # Eq (6): We start considering graph convolution layers to provide a representation for each node in the graphs
         x = self.dropout(x1)
 
-        x2 = self.norm2(self.act2(self.conv2(x, edge_index)))
+        x2 = self.norm2(self.act2(self.conv2(x, edge_index))) # Eq (7): We stack 3 graph convolution layers
         x = self.dropout(x2)
 
         x3 = self.norm3(self.act3(self.conv3(x, edge_index)))
@@ -122,30 +122,30 @@ class GNN_Conv_SOM(torch.nn.Module):
         conv_batch_add = gadd(h_conv, data.batch)
         conv_batch_max = gmp(h_conv, data.batch)
 
-        h_GNN = torch.cat([conv_batch_avg, conv_batch_add, conv_batch_max], dim=1)
+        h_GNN = torch.cat([conv_batch_avg, conv_batch_add, conv_batch_max], dim=1) # Eq (22)
 
-        gnn_out = self.out_fun(self.lin_GNN(h_GNN))
+        gnn_out = self.out_fun(self.lin_GNN(h_GNN)) # Eq (23,24)
 
         if conv_train:
             return None, None, gnn_out
 
         # SOM
-        _, _, som_out_1 = self.som1(x1)
+        _, _, som_out_1 = self.som1(x1) # Eq (8)
         _, _, som_out_2 = self.som2(x2)
         _, _, som_out_3 = self.som3(x3)
 
         # READOUT
-        h1 = self.out_norm1(self.act1(self.out_conv1(som_out_1, edge_index)))
+        h1 = self.out_norm1(self.act1(self.out_conv1(som_out_1, edge_index))) # Eq (9)
         h2 = self.out_norm2(self.act2(self.out_conv2(som_out_2, edge_index)))
         h3 = self.out_norm3(self.act3(self.out_conv3(som_out_3, edge_index)))
 
         som_out_conv = torch.cat([h1, h2, h3], dim=1)
 
-        som_batch_avg = gap(som_out_conv, data.batch)
+        som_batch_avg = gap(som_out_conv, data.batch) # ! Aggregates w.r.t belonging batch
         som_batch_add = gadd(som_out_conv, data.batch)
         som_batch_max = gmp(som_out_conv, data.batch)
 
-        h = torch.cat([som_batch_avg, som_batch_add, som_batch_max], dim=1)
+        h = torch.cat([som_batch_avg, som_batch_add, som_batch_max], dim=1) # Eq (11)
 
         h = self.lin_out(h)
         h = self.out_fun(h)
