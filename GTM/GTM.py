@@ -6,13 +6,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 torch.pi = torch.acos(torch.zeros(1)).item() * 2
-torch.set_default_dtype(torch.float64)  # TODO is it necessary? Replace NaNs manually?
+torch.set_default_dtype(torch.float32)  # TODO is it necessary? Replace NaNs manually?
 
 class GTM(nn.Module):
-    def __init__(self, input_size, k=(10, 10), m=5, sigma=1, method='mean', device=None):
+    def __init__(self, input_size, out_size=(10, 10), m=10, sigma=1, alpha=1e-3, method='mean', device=None):
         '''
         :param input_size: Dimension of t = (t1, ..., t_D), a.k.a D, e.g. 30
-        :param k: nodes of a regular grid in latent space x = (x1, ..., x_L), L=2
+        :param out_size: nodes of a regular grid in latent space x = (x1, ..., x_L), L=2, out_size is K in papers
         :param m: We consider y(W,x) = W.phi(x). The elements of phi(x) consist of m^2 fixed radial basis functions.
         :param sigma:
         '''
@@ -24,12 +24,14 @@ class GTM(nn.Module):
             self.device = device
 
         self.input_size = input_size  # n_dimensions
-        self.out_size = k
-        self.n_nodes = k[0] * k[1]  # k[0] = n_grids TODO fix tuple here onwards
+        self.out_size = out_size
+        self.n_nodes = out_size[0] * out_size[1]  # out_size[0] = n_grids TODO fix tuple here onwards and misleading name "n_nodes"
         self.n_rfb = m
         self.method = method
+        self.prev_likelihood_ = -float('inf')
+        self.alpha = torch.Tensor([alpha]).to(self.device) # regularization, = lambda in paper TODO fix with adaptive value as in SOM
 
-        a = torch.linspace(-1, 1, k[0])
+        a = torch.linspace(-1, 1, out_size[0])
         self.matX = nn.Parameter(torch.cartesian_prod(a, a), requires_grad=False)  # z
         a = torch.linspace(-1, 1, m)
         self.matM = nn.Parameter(torch.cartesian_prod(a, a), requires_grad=False)  # rbf locations
@@ -47,24 +49,37 @@ class GTM(nn.Module):
         self.phi = nn.Parameter(torch.exp(-self.d / 2. * self.sigma), requires_grad=False).to(self.device)
 
         # Continue initialization later with input data
-        self.to_be_initialized = True
+        self.to_be_initialized = False # TODO fix
+
+        w = torch.empty(self.n_rfb ** 2, input_size)
+        self.W = nn.init.zeros_(w).to(self.device)
+
+        b = torch.empty(1)
+        self.beta = nn.init.ones_(b).to(self.device)
 
     def responsibility(self, X):
-        p = torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2) ** 2)
-        return p.div(p.sum(dim=0))
+        """
+        R = posterior probability (w/o L!) = p(x|t,W,beta) = p(t|x,W,beta) / sum_i p(t|x_i,W,beta)
+        """
+        with torch.no_grad():
+            p = torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2) ** 2).add_(1e-10) #TODO checkthis regularization paramete
+            return p.div(p.sum(dim=0))
 
     def likelihood(self, X):
         """
         p(t|x,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x) - t||^2)
         ln p = k1 + k2 = D/2 * ln(beta/2pi) + (-beta/2 * ||W.psi - t||^2)
+        This leads to the complete-data log likelihood used in EM Eq (10)
         """
-        # with torch.no_grad(): # TODO check whether needs grad or not
-        R = self.responsibility(X)
-        D = X.shape[1]
-        k1 = torch.log(self.beta / (2 * torch.pi)).mul(D / 2)
-        k2 = (torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2) ** 2).mul(-(self.beta.div(2)))
-        temp = k2.add(k1) * R
-        return temp.sum()
+        with torch.no_grad(): # TODO check whether needs grad or not -> no because of EM
+            R = self.responsibility(X)
+            D = X.shape[1]
+            k1 = torch.log(self.beta / (2 * torch.pi)).mul(D / 2)
+            k2 = (torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2) ** 2).mul(-(self.beta.div(2)))
+            temp = k2.add(k1) * R
+            del k1
+            del k2
+            return temp.sum()
 
     def transform(self, X, y=None):
         """
@@ -97,21 +112,20 @@ class GTM(nn.Module):
             inter_dist.fill_diagonal_(float('inf'))
             betainv2 = inter_dist.min(dim=0).values.mean().item() / 2.
 
-            self.beta = nn.Parameter(torch.Tensor([1. / max(betainv1, betainv2)]), requires_grad=True).to(self.device)
-            self.W = nn.Parameter(self.W, requires_grad=True)
+            self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)
 
             self.to_be_initialized = False
 
-        # Forward step = self.transform() (but w/ grad())
+        # Forward step = self.transform()
+        n_nodes = t.size()[0]
         if self.method == 'mean':
             R = self.responsibility(t)
             GTM_output = self.matX.T.matmul(R).T
         elif self.method == 'mode':
             GTM_output = self.matX[self.responsibility(t).argmax(dim=0), :]
 
-        return GTM_output
+        return -self.likelihood(t).div_(n_nodes).item(), GTM_output
 
-        n_nodes = t.size()[0]
         t = t.view(n_nodes, -1, 1).to(self.device)  # add 3rd dimension
         # use the same weights for each row of the input
         node_weight = self.weight.expand(n_nodes, -1, -1)  # Shape (n_nodes, input_size, out_size[0]*[1])
@@ -141,14 +155,29 @@ class GTM(nn.Module):
 
         return bmu_locations, losses.sum().div_(n_nodes).item(), GTM_output
 
-    def self_organizing(self, x, current_iter, max_iter, lr):
+    def train_aggregator(self, x, current_iter, max_iter, lr):
         '''
-        Train the Self Organizing Map(GTM)
-        :param x: training data
+        Train the GTM
+        :param x: training data (aka t)
         :param current_iter: current epoch of total epoch
         :param max_iter: total epoch
         :return: loss (minimum distance)
         '''
+
+        # Set learning rate # TODO Learning rate/sigma vs regularization/alpha
+        iter_correction = 1.0 - current_iter / max_iter
+        lr = lr * iter_correction
+        sigma = self.sigma * iter_correction
+
+        R = self.responsibility(x)
+        G = torch.diag(R.sum(dim=1))
+        self.W = torch.linalg.solve(
+            self.phi.T.matmul(G).matmul(self.phi) + (self.alpha / self.beta) * torch.eye(self.phi.shape[1], device=self.device),
+            self.phi.T.matmul(R).matmul(x)) # W is already transposed, W = M x D, contrary to the paper
+
+        self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2).pow_(2).mul_(R).sum()
+
+        return -self.likelihood(x).item() # - due to MINIMIZATION
 
         batch_size = x.size()[0]
 
@@ -191,7 +220,7 @@ class GTM(nn.Module):
         images = images.permute(3, 0, 1, 2)
         save_image(images, dir, normalize=True, padding=1, nrow=self.out_size[0])
 
-
+"""
 gtm1 = GTM(30)
 gtm1 = gtm1.to('cuda')
 x1 = torch.Tensor([[-6.2052e-01, -4.7863e-01, 1.8450e-02, 7.7096e-02, 3.3477e-01,
@@ -3543,9 +3572,14 @@ x1 = torch.Tensor([[-6.2052e-01, -4.7863e-01, 1.8450e-02, 7.7096e-02, 3.3477e-01
                     -3.0645e-03, -6.2499e-02, 4.7504e-02, -4.1782e-02, -2.4637e-01,
                     -3.9834e-01, 3.1030e-01, 1.2986e-01, -7.4017e-01, -3.1758e-01]]).to('cuda')
 gtm1(x1)
-R1 = gtm1.responsibility(x1)
-l = gtm1.likelihood(x1)
+#R1 = gtm1.responsibility(x1)
+#l = gtm1.likelihood(x1)
+#xt = gtm1.transform(x1).cpu().numpy()
+#plt.scatter(*xt.T)
+#plt.show()
+a = gtm1.train_aggregator(x1)
+print(a)
 xt = gtm1.transform(x1).cpu().numpy()
 plt.scatter(*xt.T)
 plt.show()
-a = 1 + 1
+"""

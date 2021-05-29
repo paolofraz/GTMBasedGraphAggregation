@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 class GTM(BaseEstimator, TransformerMixin):
-    def __init__(self, n_components=2, n_rbfs=5, sigma=1, alpha=1e-3, n_grids=10, method='mean',
+    def __init__(self, n_components=2, n_rbfs=25, sigma=1, alpha=1e-2, n_grids=25, method='mean',
                  max_iter=10, tol=1e-3, random_state=None, verbose=False):
         self.n_components = n_components
         self.n_rbfs = n_rbfs
@@ -45,7 +45,7 @@ class GTM(BaseEstimator, TransformerMixin):
         self.beta = 1 / max(betainv1, betainv2)
 
     def responsibility(self, X):
-        p = np.exp((-self.beta / 2) * cdist(self.phi.dot(self.W), X, 'sqeuclidean'))
+        p = np.exp((-self.beta / 2) * cdist(self.phi.dot(self.W), X, 'sqeuclidean')) + 1e-10
         return p / p.sum(axis=0)
 
     def likelihood(self, X):
@@ -3441,9 +3441,13 @@ x1 = torch.Tensor([[-6.2052e-01, -4.7863e-01,  1.8450e-02,  7.7096e-02,  3.3477e
          -3.0645e-03, -6.2499e-02,  4.7504e-02, -4.1782e-02, -2.4637e-01,
          -3.9834e-01,  3.1030e-01,  1.2986e-01, -7.4017e-01, -3.1758e-01]]).cpu().detach().numpy()
 gtm1.init(x1)
-R1 = gtm1.responsibility(x1)
+#R1 = gtm1.responsibility(x1)
 xt = gtm1.transform(x1)
 plt.scatter(* xt.T)
 plt.show()
-l = gtm1.likelihood(x1)
+#l = gtm1.likelihood(x1)
+a = gtm1.fit(x1)
 a = 1+1
+xt = gtm1.transform(x1)
+plt.scatter(* xt.T)
+plt.show()
