@@ -9,11 +9,13 @@ torch.pi = torch.acos(torch.zeros(1)).item() * 2
 torch.set_default_dtype(torch.float32)  # TODO is it necessary? Replace NaNs manually?
 
 class GTM(nn.Module):
-    def __init__(self, input_size, out_size=(10, 10), m=10, sigma=1, alpha=1e-3, method='mean', device=None):
+    def __init__(self, input_size, out_size=(20, 18), m=12, sigma=None, alpha=1e-3, method='full_prob', device=None):
         '''
         :param input_size: Dimension of t = (t1, ..., t_D), a.k.a D, e.g. 30
-        :param out_size: nodes of a regular grid in latent space x = (x1, ..., x_L), L=2, out_size is K in papers
+        :param out_size: nodes of a regular grid in latent space x = (x1, ..., x_L), L=2, #latent variables is K in papers
         :param m: We consider y(W,x) = W.phi(x). The elements of phi(x) consist of m^2 fixed radial basis functions.
+        :param W: D x m Matrix in paper, here is M x D
+        :param phi: M fixed basis functions, K x M (=n_rbf)
         :param sigma:
         '''
         super(GTM, self).__init__()
@@ -32,27 +34,28 @@ class GTM(nn.Module):
         self.alpha = torch.Tensor([alpha]).to(self.device) # regularization, = lambda in paper TODO fix with adaptive value as in SOM
 
         a = torch.linspace(-1, 1, out_size[0])
-        self.matX = nn.Parameter(torch.cartesian_prod(a, a), requires_grad=False)  # z
-        a = torch.linspace(-1, 1, m)
+        b = torch.linspace(-1, 1, out_size[1])
+        self.matX = nn.Parameter(torch.cartesian_prod(a, b), requires_grad=False)  # z
+        a = torch.linspace(-1 + 1./m, 1 - 1./m, m)
         self.matM = nn.Parameter(torch.cartesian_prod(a, a), requires_grad=False)  # rbf locations
 
         if sigma is None:
             # estimate sigma as average min distance among rbfs
-            rbfWidth = torch.cdist(self.matM, self.matM, p=2).pow_(2)
+            rbfWidth = torch.cdist(self.matM, self.matM, p=2, compute_mode= 'donot_use_mm_for_euclid_dist') #.pow_(2) squared distances [for sigma^2/sigma]
             self.sigma = torch.mean(
-                torch.min(rbfWidth[torch.nonzero(rbfWidth, as_tuple=True)].view(m * m, m * m - 1), dim=1).values).item()
+                torch.min(rbfWidth[torch.nonzero(rbfWidth, as_tuple=True)].view(m * m, m * m - 1), dim=1).values).item()  # so it excludes distances = 0 with itself -> there is some issue with self distances https://gitmemory.com/issue/pytorch/pytorch/57690/833204080
         else:
             self.sigma = float(sigma)
 
         # Create matrix of RBF functions
-        self.d = torch.cdist(self.matX, self.matM, p=2) ** 2  # squared distances
-        self.phi = nn.Parameter(torch.exp(-self.d / 2. * self.sigma), requires_grad=False).to(self.device)
+        d = torch.cdist(self.matX, self.matM, p=2, compute_mode= 'donot_use_mm_for_euclid_dist').pow_(2)  # squared distances
+        self.phi = nn.Parameter(torch.exp(-d / ( 2. * self.sigma) ), requires_grad=False).to(self.device) # TODO are phi "Parameter"?
 
         # Continue initialization later with input data
-        self.to_be_initialized = False # TODO fix
+        self.to_be_initialized = False # TODO fix, incorporta reset parameter?
 
         w = torch.empty(self.n_rfb ** 2, input_size)
-        self.W = nn.init.zeros_(w).to(self.device)
+        self.W = nn.init.normal_(w).to(self.device)
 
         b = torch.empty(1)
         self.beta = nn.init.ones_(b).to(self.device)
@@ -62,8 +65,16 @@ class GTM(nn.Module):
         R = posterior probability (w/o L!) = p(x|t,W,beta) = p(t|x,W,beta) / sum_i p(t|x_i,W,beta)
         """
         with torch.no_grad():
-            p = torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2) ** 2).add_(1e-10) #TODO checkthis regularization paramete
+            p = torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).add_(1e-10) #TODO checkthis regularization paramete, usa anche e-6
             return p.div(p.sum(dim=0))
+
+    def pdf_data_space(self,t):
+        """
+        Distribution function in data space.
+        p(t|x_i,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x_i) - t||^2)
+        """
+        #return ((self.beta / (2 * torch.pi)).pow_(t.shape[1] / 2).mul(torch.exp(torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).mul(-(self.beta.div(2))))).T.view(-1, self.out_size[0], self.out_size[1])
+        return torch.exp(-torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).T.view(-1, self.out_size[0], self.out_size[1])
 
     def likelihood(self, X):
         """
@@ -75,25 +86,25 @@ class GTM(nn.Module):
             R = self.responsibility(X)
             D = X.shape[1]
             k1 = torch.log(self.beta / (2 * torch.pi)).mul(D / 2)
-            k2 = (torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2) ** 2).mul(-(self.beta.div(2)))
+            k2 = (torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).mul(-(self.beta.div(2)))
             temp = k2.add(k1) * R
-            del k1
-            del k2
             return temp.sum()
 
-    def transform(self, X, y=None):
+    def transform(self, Xt):
         """
         Bayes' theorem is used to invert the transformation from latent space to data space,
         i.e. projecting the data X (t) to the L-lattice (x).
         There are 2 suggested approaches, 'mean' and 'mode', see 2.2 in Bishop (1998)
         """
-        assert self.method in ('mean', 'mode')
+        assert self.method in ('mean', 'mode', 'full_prob')
         with torch.no_grad():
+            if self.method == 'full_prob':
+                return self.responsibility(Xt).T
             if self.method == 'mean':
-                R = self.responsibility(X)
-                return self.matX.T.matmul(R).T
+                R = self.responsibility(Xt)
+                return R.T.matmul(self.matX)
             elif self.method == 'mode':
-                return self.matX[self.responsibility(X).argmax(dim=0), :]
+                return self.matX[self.responsibility(Xt).argmax(dim=0), :]
 
     def forward(self, t, sigma=None):
         '''
@@ -108,21 +119,17 @@ class GTM(nn.Module):
             self.W = torch.linalg.pinv(self.phi).matmul(self.matX).matmul(V[:, :2].T)
 
             betainv1 = (S ** 2 / (t.shape[0] - 1))[2].item()  # take L+1 eigenvalue
-            inter_dist = torch.cdist(self.phi.matmul(self.W), self.phi.matmul(self.W))
+            inter_dist = torch.cdist(self.phi.matmul(self.W), self.phi.matmul(self.W), compute_mode='donot_use_mm_for_euclid_dist')
             inter_dist.fill_diagonal_(float('inf'))
             betainv2 = inter_dist.min(dim=0).values.mean().item() / 2.
 
-            self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)
+            self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device) # TODO "Parameter"?
 
             self.to_be_initialized = False
 
         # Forward step = self.transform()
         n_nodes = t.size()[0]
-        if self.method == 'mean':
-            R = self.responsibility(t)
-            GTM_output = self.matX.T.matmul(R).T
-        elif self.method == 'mode':
-            GTM_output = self.matX[self.responsibility(t).argmax(dim=0), :]
+        GTM_output = self.transform(t)
 
         return -self.likelihood(t).div_(n_nodes).item(), GTM_output
 
@@ -164,7 +171,7 @@ class GTM(nn.Module):
         :return: loss (minimum distance)
         '''
 
-        # Set learning rate # TODO Learning rate/sigma vs regularization/alpha
+        # Set learning rate # TODO Learning rate/sigma vs regularization/alpha -> meno iperparametri usi meno c'è da convalidare
         iter_correction = 1.0 - current_iter / max_iter
         lr = lr * iter_correction
         sigma = self.sigma * iter_correction
@@ -175,9 +182,9 @@ class GTM(nn.Module):
             self.phi.T.matmul(G).matmul(self.phi) + (self.alpha / self.beta) * torch.eye(self.phi.shape[1], device=self.device),
             self.phi.T.matmul(R).matmul(x)) # W is already transposed, W = M x D, contrary to the paper
 
-        self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2).pow_(2).mul_(R).sum()
+        self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2, compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
 
-        return -self.likelihood(x).item() # - due to MINIMIZATION
+        return -self.likelihood(x).item() # - due to MINIMIZATION # TODO here likelihood / n_nodes as in forward? E' solo per un print
 
         batch_size = x.size()[0]
 
@@ -220,10 +227,10 @@ class GTM(nn.Module):
         images = images.permute(3, 0, 1, 2)
         save_image(images, dir, normalize=True, padding=1, nrow=self.out_size[0])
 
-"""
-gtm1 = GTM(30)
-gtm1 = gtm1.to('cuda')
-x1 = torch.Tensor([[-6.2052e-01, -4.7863e-01, 1.8450e-02, 7.7096e-02, 3.3477e-01,
+if __name__ == '__main__':
+    gtm1 = GTM(30)
+    gtm1 = gtm1.to('cuda')
+    x1 = torch.Tensor([[-6.2052e-01, -4.7863e-01, 1.8450e-02, 7.7096e-02, 3.3477e-01,
                     -1.5405e-02, -1.6519e-01, 5.7270e-01, 1.0838e-01, 1.1022e-01,
                     3.7972e-01, -7.0032e-01, 5.9059e-03, 2.8790e-01, 5.1606e-01,
                     -3.2479e-01, 5.2144e-01, -6.1549e-01, -6.2346e-01, -3.2313e-01,
@@ -3571,15 +3578,14 @@ x1 = torch.Tensor([[-6.2052e-01, -4.7863e-01, 1.8450e-02, 7.7096e-02, 3.3477e-01
                     -3.2479e-01, 5.2144e-01, -6.1549e-01, -6.2346e-01, -3.2313e-01,
                     -3.0645e-03, -6.2499e-02, 4.7504e-02, -4.1782e-02, -2.4637e-01,
                     -3.9834e-01, 3.1030e-01, 1.2986e-01, -7.4017e-01, -3.1758e-01]]).to('cuda')
-gtm1(x1)
-#R1 = gtm1.responsibility(x1)
-#l = gtm1.likelihood(x1)
-#xt = gtm1.transform(x1).cpu().numpy()
-#plt.scatter(*xt.T)
-#plt.show()
-a = gtm1.train_aggregator(x1)
-print(a)
-xt = gtm1.transform(x1).cpu().numpy()
-plt.scatter(*xt.T)
-plt.show()
-"""
+    gtm1(x1)
+    #R1 = gtm1.responsibility(x1)
+    #l = gtm1.likelihood(x1)
+    #xt = gtm1.transform(x1).cpu().numpy()
+    #plt.scatter(*xt.T)
+    #plt.show()
+    a = gtm1.train_aggregator(x1)
+    print(a)
+    xt = gtm1.transform(x1).cpu().numpy()
+    plt.scatter(*xt.T)
+    plt.show()

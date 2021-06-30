@@ -1,0 +1,44 @@
+#!/bin/bash
+### job name
+#PBS -N THESIS_GTM
+
+### Programma non-rerunable
+#PBS -r n
+
+### Manda un'e-mail a esecuzione terminata:
+#PBS -m ae
+#PBS -M paolo.frazzetto@studenti.unipd.it
+
+### Redirezione dello standard output e standard error del programma
+#PBS -e localhost:${HOME}/BlankJob/err1.err
+#PBS -o localhost:${HOME}/BlankJob/out1.out
+
+### Scelta della coda "cuda"
+#PBS -q cuda
+
+### Numero di host (nodes) occupati dal Job e numero di processi da allocare per nodo (ppn)
+#PBS -l nodes=1:ppn=1:cuda10
+### Memoria che ci si aspetta che il programma utilizzi
+#PBS -l mem=25g
+
+### Limite di tempo che vogliamo assegnare al nostro job
+#PBS -l walltime=999:00:00
+
+###
+### Mi sposto nella directory di lavoro
+cd ${HOME}/BlankJob/
+
+### Alcuni comandi di shell che ci spostano nella nostra directory e stampano lo stato 
+### del sistema prima dell'esecuzione
+echo Host di esecuzione: `hostname`
+echo Data: `date`
+echo Directory: `pwd`
+echo Questo job viene eseguito sui seguenti nodi:
+echo `cat $PBS_NODEFILE`
+echo PBS_WORKDIR=$PBS_WORKDIR
+
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64
+
+### Esecuzione del nostro programma
+conda activate PyTorch_env
+python /home/frazzetp/Thesis_GTM/experiments/MUTAG/MUTAG_conv_gtm.py

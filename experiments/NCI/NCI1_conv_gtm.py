@@ -5,8 +5,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 import torch
 
-from model.GNN_Conv_SOM_deep_readout import GNN_Conv_SOM
-from impl.binGraphClassifier_SOM_Layer import modelImplementation_GraphBinClassifier
+from model.GNN_Conv_GTM import GNN_Conv_GTM
+from impl.binGraphClassifier_GTM_Layer import modelImplementation_GraphBinClassifier
 from utils.utils import printParOnFile
 from data_reader.cross_validation_reader import getcross_validation_split
 
@@ -16,30 +16,31 @@ if __name__ == '__main__':
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
-    dataset_path = '~/storage/Dataset/PROTEINS'
-    dataset_name = 'PROTEINS'
+    dataset_path = '~/storage/Dataset/'
+    dataset_name = 'NCI1'
     n_folds = 10
     test_epoch = 1
 
 
-    n_units = 20
-    lr_conv = 0.0001
-    lr_readout = 0.0001
+    n_units = 75
+    lr_conv = 0.0005
+    lr_readout = 0.0005
     lr_fine_tuning = 0.0001
     weight_decay = 5e-4
     drop_prob = 0.5
     batch_size = 32
 
-    som_epoch=500
-    som_grids_dim = (15,10)
-    som_lr=0.005
+    gtm_epoch=500
+    gtm_grids_dim = (20, 15)
+    gtm_lr = 0.005
+    gtm_rbf = 12 # this squared equals the amount of rbf basis functions, default = 10
 
     # early stopping par
-    max_n_epochs_without_improvements = 20
+    max_n_epochs_without_improvements = 25
     early_stopping_threshold = 0.075
-    early_stopping_threshold_som = 0.02
+    early_stopping_threshold_gtm = 0.02
 
-    test_name = "GNN_Conv_Som_deep_readout"
+    test_name = "test_1_GNN_Conv_GTM"
 
     test_name = test_name + \
                 "_data-" + dataset_name + \
@@ -52,8 +53,9 @@ if __name__ == '__main__':
                 "_weight-decay-" + str(weight_decay) + \
                 "_batchSize-" + str(batch_size) + \
                 "_nHidden-" + str(n_units) + \
-                "_som_grid-" + str(som_grids_dim[0]) + "_" + str(som_grids_dim[1]) + \
-                "_som_lr-" + str(som_lr)
+                "_gtm_grid-" + str(gtm_grids_dim[0]) + "_" + str(gtm_grids_dim[1]) + \
+                "_gtm_lr-" + str(gtm_lr) + \
+                "_gtm_rbf-" + str(gtm_rbf)
 
     training_log_dir = os.path.join("./test_log/", test_name)
     if not os.path.exists(training_log_dir):
@@ -84,7 +86,7 @@ if __name__ == '__main__':
         loader_test = split[1]
         loader_valid = split[2]
 
-        model = GNN_Conv_SOM(loader_train.dataset.num_features, n_units, n_classes, som_grids_dim, drop_prob).to(
+        model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, drop_prob).to(
             device)
 
         model_impl = modelImplementation_GraphBinClassifier(model=model,
@@ -92,22 +94,16 @@ if __name__ == '__main__':
                                                             device=device).to(device)
 
         model_impl.set_optimizer(lr_conv=lr_conv,
-                                 lr_som=som_lr,
+                                 lr_gtm=gtm_lr,
                                  lr_reaout=lr_readout,
                                  lr_fine_tuning=lr_fine_tuning,
                                  weight_decay=weight_decay)
 
-        model_impl.train_test_model(split_id=split_id,
-                                    loader_train=loader_train,
-                                    loader_test=loader_test,
-                                    loader_valid=loader_valid,
-                                    n_epochs_conv=n_epochs_conv,
-                                    n_epochs_readout=n_epochs_readout,
-                                    n_epochs_fine_tuning=n_epochs_fine_tuning,
-                                    n_epochs_som=som_epoch,
-                                    test_epoch=test_epoch,
+        model_impl.train_test_model(split_id=split_id, loader_train=loader_train, loader_test=loader_test,
+                                    loader_valid=loader_valid, n_epochs_conv=n_epochs_conv,
+                                    n_epochs_readout=n_epochs_readout, n_epochs_fine_tuning=n_epochs_fine_tuning,
+                                    n_epochs_gtm=gtm_epoch, test_epoch=test_epoch,
                                     early_stopping_threshold=early_stopping_threshold,
-                                    early_stopping_threshold_som=early_stopping_threshold_som,
+                                    early_stopping_threshold_gtm=early_stopping_threshold_gtm,
                                     max_n_epochs_without_improvements=max_n_epochs_without_improvements,
-                                    test_name=test_name,
-                                    log_path=training_log_dir)
+                                    test_name=test_name, log_path=training_log_dir)

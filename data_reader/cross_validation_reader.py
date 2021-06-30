@@ -1,4 +1,3 @@
-
 import torch
 from random import seed
 import numpy as np
@@ -8,9 +7,7 @@ from torch_geometric.data import DataLoader
 
 from utils.utils import get_graph_diameter
 
-
 rnd_state = np.random.RandomState(seed(1))
-
 
 def collate_batch(batch):
     '''
@@ -39,6 +36,9 @@ def collate_batch(batch):
     return [x, A, graph_support, N_nodes, labels]
 
 def split_ids(ids, folds=10):
+    """
+    Function that returns train, test and validation splits ids
+    """
     n = len(ids)
     stride = int(np.ceil(n / float(folds)))
     test_ids = [ids[i: i + stride] for i in range(0, n, stride)]
@@ -64,7 +64,7 @@ def split_ids(ids, folds=10):
     return train_ids, test_ids, valid_ids
 
 
-def getcross_validation_split(dataset_path='~/Dataset/MUTAG', dataset_name='MUTAG', n_folds=2, batch_size=1, use_node_attr=False):
+def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_name='MUTAG', n_folds=2, batch_size=1, use_node_attr=False):
 
     dataset = TUDataset(root=dataset_path, name=dataset_name, pre_transform=get_graph_diameter, use_node_attr=use_node_attr)
     train_ids, test_ids, valid_ids = split_ids(rnd_state.permutation(len(dataset)), folds=n_folds)
@@ -91,7 +91,7 @@ def getcross_validation_split(dataset_path='~/Dataset/MUTAG', dataset_name='MUTA
     return splits #0-train, 1-test, 2-valid
 
 if __name__ == '__main__':
-    cv_splits=getcross_validation_split(n_folds=10)
+    cv_splits= getcross_validation_split(n_folds=10)
 
     split_1=cv_splits[2]
     train=split_1[0]

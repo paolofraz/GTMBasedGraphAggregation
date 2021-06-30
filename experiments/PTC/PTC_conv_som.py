@@ -17,7 +17,7 @@ if __name__ == '__main__':
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
-    dataset_path = '~/Dataset/PTC_MR'
+    dataset_path = '~/storage/Dataset/PTC_MR'
     dataset_name = 'PTC_MR'
     n_folds = 10
     test_epoch = 1
@@ -57,9 +57,15 @@ if __name__ == '__main__':
                 "_som_grid-" + str(som_grids_dim[0]) + "_" + str(som_grids_dim[1]) + \
                 "_som_lr-" + str(som_lr)
 
-    training_log_dir = Path.cwd() / "test_log" / test_name
-    training_log_dir = longname(training_log_dir)
-    training_log_dir.mkdir(parents=True,exist_ok=True)
+    if sys.platform = 'win32':
+        # Windows compatible paths
+        training_log_dir = Path.cwd() / "test_log" / test_name
+        training_log_dir = longname(training_log_dir)
+        training_log_dir.mkdir(parents=True, exist_ok=True)
+    elif sys.platform = 'linux':
+        training_log_dir = os.path.join("./test_log/", test_name)
+        if not os.path.exists(training_log_dir):
+            os.makedirs(training_log_dir)
 
     printParOnFile(test_name=test_name, log_dir=training_log_dir,
                    par_list={"dataset_name": dataset_name,
@@ -80,8 +86,7 @@ if __name__ == '__main__':
 
     criterion = torch.nn.NLLLoss()
 
-    dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds,
-                                                  batch_size)
+    dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds, batch_size)
     for split_id, split in enumerate(dataset_cv_splits):
         loader_train = split[0]
         loader_test = split[1]
