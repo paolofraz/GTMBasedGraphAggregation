@@ -139,11 +139,17 @@ class GNN_Conv_GTM(torch.nn.Module):
 
         # GTM
         _, gtm_out_1 = self.gtm1(x1) # Eq (8)
-        _, gtm_out_2 = self.gtm2(x2)
+        _, gtm_out_2 = self.gtm2(x2) # gtm_out has size (#node representations ,#latent variables)
         _, gtm_out_3 = self.gtm3(x3)
 
         if gtm_train:
             return None, h_conv, None
+
+        with torch.no_grad(): # Set Max = 1 for GTM outputs (so they are bounded in [0,1])
+            gtm_out_1 /= gtm_out_1.max(axis=1, keepdim=True).values
+            gtm_out_2 /= gtm_out_2.max(axis=1, keepdim=True).values
+            gtm_out_3 /= gtm_out_3.max(axis=1, keepdim=True).values
+
 
         # READOUT
         h1 = self.out_norm1(self.act1(self.out_conv1(gtm_out_1, edge_index))) # Eq (9)

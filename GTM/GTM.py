@@ -27,7 +27,7 @@ class GTM(nn.Module):
 
         self.input_size = input_size  # n_dimensions
         self.out_size = out_size
-        self.n_nodes = out_size[0] * out_size[1]  # out_size[0] = n_grids TODO fix tuple here onwards and misleading name "n_nodes"
+        self.n_latent_variables = out_size[0] * out_size[1]
         self.n_rfb = m
         self.method = method
         self.prev_likelihood_ = -float('inf')
@@ -35,9 +35,9 @@ class GTM(nn.Module):
 
         a = torch.linspace(-1, 1, out_size[0])
         b = torch.linspace(-1, 1, out_size[1])
-        self.matX = nn.Parameter(torch.cartesian_prod(a, b), requires_grad=False)  # z
+        self.matX = torch.cartesian_prod(a, b).to(self.device) # z
         a = torch.linspace(-1 + 1./m, 1 - 1./m, m)
-        self.matM = nn.Parameter(torch.cartesian_prod(a, a), requires_grad=False)  # rbf locations
+        self.matM = nn.Parameter(torch.cartesian_prod(a, a).to(self.device), requires_grad=False)  # rbf locations
 
         if sigma is None:
             # estimate sigma as average min distance among rbfs
@@ -49,16 +49,36 @@ class GTM(nn.Module):
 
         # Create matrix of RBF functions
         d = torch.cdist(self.matX, self.matM, p=2, compute_mode= 'donot_use_mm_for_euclid_dist').pow_(2)  # squared distances
-        self.phi = nn.Parameter(torch.exp(-d / ( 2. * self.sigma) ), requires_grad=False).to(self.device) # TODO are phi "Parameter"?
+        #self.phi = nn.Parameter(torch.exp(-d / ( 2. * self.sigma) ).to(self.device), requires_grad=False) # TODO are phi "Parameter"? Prameter = tensor with grad
+        self.phi = torch.exp(-d / (2. * self.sigma)).to(self.device)
 
         # Continue initialization later with input data
-        self.to_be_initialized = False # TODO fix, incorporta reset parameter?
+        self.to_be_initialized = True
 
         w = torch.empty(self.n_rfb ** 2, input_size)
         self.W = nn.init.normal_(w).to(self.device)
 
         b = torch.empty(1)
         self.beta = nn.init.ones_(b).to(self.device)
+
+    def initialize(self, t):
+        """
+        PCA initialization
+        """
+        U, S, V = torch.pca_lowrank(t.to(self.device))
+        self.W = torch.linalg.pinv(self.phi).matmul(self.matX).matmul(V[:, :2].T)
+        #self.W = nn.Parameter(self.W, requires_grad=False)
+
+        betainv1 = (S ** 2 / (t.shape[0] - 1))[2].item()  # take L+1 eigenvalue
+        inter_dist = torch.cdist(self.phi.matmul(self.W), self.phi.matmul(self.W),
+                                 compute_mode='donot_use_mm_for_euclid_dist')
+        inter_dist.fill_diagonal_(float('inf'))
+        betainv2 = inter_dist.min(dim=0).values.mean().item() / 2.
+
+        self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)  # TODO "Parameter"?
+        #self.beta = nn.Parameter(self.beta, requires_grad=False)
+
+        self.to_be_initialized = False
 
     def responsibility(self, X):
         """
@@ -70,11 +90,15 @@ class GTM(nn.Module):
 
     def pdf_data_space(self,t):
         """
-        Distribution function in data space.
+        Probability density function of a single point projected to latent space from data space.
         p(t|x_i,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x_i) - t||^2)
+        param: t point shaped as (1,-1) tensor
+        return a (1,out_size[0], out_size[1]) tensor
         """
         #return ((self.beta / (2 * torch.pi)).pow_(t.shape[1] / 2).mul(torch.exp(torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).mul(-(self.beta.div(2))))).T.view(-1, self.out_size[0], self.out_size[1])
-        return torch.exp(-torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).T.view(-1, self.out_size[0], self.out_size[1])
+        # TODO check exactly what I'm doing here...
+        #return result.T.view(-1, self.out_size[0], self.out_size[1])
+        return torch.exp(-torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).view(self.out_size[0], self.out_size[1])
 
     def likelihood(self, X):
         """
@@ -112,20 +136,6 @@ class GTM(nn.Module):
         :param t: input data, shape (N, D)
         :return:
         '''
-
-        # If necessary, initialize W and beta from PCA
-        if self.to_be_initialized == True:
-            U, S, V = torch.pca_lowrank(t.to(self.device))
-            self.W = torch.linalg.pinv(self.phi).matmul(self.matX).matmul(V[:, :2].T)
-
-            betainv1 = (S ** 2 / (t.shape[0] - 1))[2].item()  # take L+1 eigenvalue
-            inter_dist = torch.cdist(self.phi.matmul(self.W), self.phi.matmul(self.W), compute_mode='donot_use_mm_for_euclid_dist')
-            inter_dist.fill_diagonal_(float('inf'))
-            betainv2 = inter_dist.min(dim=0).values.mean().item() / 2.
-
-            self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device) # TODO "Parameter"?
-
-            self.to_be_initialized = False
 
         # Forward step = self.transform()
         n_nodes = t.size()[0]

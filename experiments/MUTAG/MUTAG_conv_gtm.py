@@ -13,7 +13,7 @@ from data_reader.cross_validation_reader import getcross_validation_split
 
 if __name__ == '__main__':
 
-    n_epochs_conv = 500
+    n_epochs_conv = 50#500
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     drop_prob = 0#0.5
     batch_size = 8
 
-    gtm_epoch = 500
+    gtm_epoch = 50
     gtm_grids_dim = (15, 20)
     gtm_lr = 0.005 #TODO make some sense out a GTM lr
     gtm_rbf = 12 # this squared equals the amount of rbf basis functions, default = 10
@@ -91,7 +91,7 @@ if __name__ == '__main__':
     criterion = torch.nn.NLLLoss()
 
     dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds,
-                                                  batch_size)  #TODO now it doesn't load (continuous) node attributes, is it correct? It add the diameter tough, lascialo. Riguardo node attribute controlla che input sia OneHot
+                                                  batch_size)  #TODO now it doesn't load (continuous) node attributes, is it correct? It add the diameter tough, lascialo. For MUTAG input is OneHot as desired
     for split_id, split in enumerate(dataset_cv_splits):
         loader_train = split[0]
         loader_test = split[1]

@@ -64,7 +64,7 @@ def split_ids(ids, folds=10):
     return train_ids, test_ids, valid_ids
 
 
-def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_name='MUTAG', n_folds=2, batch_size=1, use_node_attr=False):
+def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_name='MUTAG', n_folds=2, batch_size=1, use_node_attr=True): # edited: now it's using node attributes
 
     dataset = TUDataset(root=dataset_path, name=dataset_name, pre_transform=get_graph_diameter, use_node_attr=use_node_attr)
     train_ids, test_ids, valid_ids = split_ids(rnd_state.permutation(len(dataset)), folds=n_folds)
@@ -83,7 +83,7 @@ def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_na
                                 pin_memory=True,
                                 #persistent_workers=True,
                                 num_workers=0)#, TODO LINUX=Set this to 4; https://github.com/pytorch/pytorch/issues/12831 and https://betterprogramming.pub/how-to-make-your-pytorch-code-run-faster-93079f3c1f7b
-                                #collate_fn=collate_batch)
+                                #collate_fn=collate_batch) # this tells the DataLoader how it could make batches
             loaders.append(loader)
         splits.append(loaders)
         # print("---")

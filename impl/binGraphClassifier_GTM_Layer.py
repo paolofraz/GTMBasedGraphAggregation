@@ -9,12 +9,12 @@ from numpy.linalg import svd
 import matplotlib.pyplot as plt
 import numpy as np
 # plt.rcParams["figure.figsize"] = (20,14)
+# plt.rcParams["image.cmap"] = 'bwr'
 import gc
 
 predict_fn = lambda output: output.max(1, keepdim=True)[1].detach().cpu()  # Takes the MAX of each row
 
 _GTM_LAYERS = 3
-
 
 def prepare_log_files(test_name, log_dir):
     '''
@@ -130,13 +130,26 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         # TODO stai attento a ES per GTM e variazione della loss con validazione, peggioramento a livello di decimi su migliia
         self.load_model(test_name)
 
+        # --- GTM PCA Initialization ---
+        self.model.eval()
+        with torch.no_grad():
+            h_dataset = torch.empty((0,self.model.out_channels * 3), device=self.device)
+            for batch in loader_train:
+                data = batch.to(self.device)
+                _, h_conv, _ = self.model(data, gtm_train=True)
+                h_dataset = torch.cat((h_conv, h_dataset), 0)
+
+            self.model.gtm1.initialize(h_dataset[:, 0:self.model.out_channels])
+            self.model.gtm2.initialize(h_dataset[:, self.model.out_channels:self.model.out_channels*2])
+            self.model.gtm2.initialize(h_dataset[:, self.model.out_channels * 2:])
+
+            del h_dataset, h_conv
+
         train_log, test_log, valid_log = prepare_log_files("_gtm_part_" + test_name + "--split-" + str(split_id),
                                                            log_path)
 
         train_loss, n_samples = 0.0, 0
-
         epoch_time_sum = 0
-
         best_epoch_gtm = 0
         best_gtm_loss_so_far = -1
         gtm_n_epochs_without_improvements = 0
@@ -146,6 +159,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             h_conv_2_all = torch.empty((0, self.model.out_channels), device=self.device)
             h_conv_3_all = torch.empty((0, self.model.out_channels), device=self.device)
             gtm_losses = np.empty((0, 3))
+            y_all = np.array([], )
 
         for epoch in range(n_epochs_gtm):
             self.model.train()
@@ -155,13 +169,14 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             for batch in loader_train:
 
                 data = batch.to(self.device)
+                _, reps = torch.unique(data.batch.data,sorted=True, return_counts=True)
+                y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
                 _, h_conv, _ = self.model(data, gtm_train=True)  # h, h_conv, gnn_out
 
                 h_conv_1 = h_conv[:, 0:self.model.out_channels]  # is equal to x1
                 h_conv_2 = h_conv[:,
                            self.model.out_channels:self.model.out_channels + self.model.out_channels]  # x2
-                h_conv_3 = h_conv[:,
-                           self.model.out_channels: self.model.out_channels + self.model.out_channels]  # x3
+                h_conv_3 = h_conv[:,self.model.out_channels * 2:]  # x3
 
                 gtm_1_loss = self.model.gtm1.train_aggregator(h_conv_1, epoch, n_epochs_gtm, self.lr_gtm)
                 gtm_2_loss = self.model.gtm2.train_aggregator(h_conv_2, epoch, n_epochs_gtm, self.lr_gtm)
@@ -182,27 +197,36 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
             if epoch == 0 and self.verbose == 1 and split_id == 0:
                 fig, axs = plt.subplots(2, 3, figsize=(20, 14))
+                fig.suptitle(test_name)
+                colormap = np.array(['navy', 'firebrick'])
+                y_all = y_all.astype(int)
                 points = h_conv_1_all.matmul(torch.linalg.pinv(self.model.gtm1.W)).matmul(self.model.gtm1.matM)
-                axs[0, 0].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy())
+                axs[0, 0].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
+                axs[0, 0].text(0.01, 0.01, "Beta = "+"{:.4f}".format(self.model.gtm1.beta.item()), verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 0].transAxes)
                 axs[0, 0].set_title("Pre GTM Training - 1st layer")
                 points = h_conv_2_all.matmul(torch.linalg.pinv(self.model.gtm2.W)).matmul(self.model.gtm2.matM)
-                axs[0, 1].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy())
+                axs[0, 1].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
+                axs[0, 1].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm2.beta.item()),
+                               verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 1].transAxes)
                 axs[0, 1].set_title("Pre GTM Training - 2nd layer")
                 points = h_conv_3_all.matmul(torch.linalg.pinv(self.model.gtm3.W)).matmul(self.model.gtm3.matM)
-                axs[0, 2].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy())
+                axs[0, 2].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
+                axs[0, 2].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm3.beta.item()),
+                               verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 2].transAxes)
                 axs[0, 2].set_title("Pre GTM Training - 3rd layer")
 
                 fig2, axs2 = plt.subplots(2,3, figsize = (10,7))
+                fig2.suptitle(test_name)
                 im = axs2[0,0].imshow(
-                    self.model.gtm1.pdf_data_space(h_conv_1_all[42, :].view(1, -1))[0, :, :].cpu().detach().numpy())
+                    self.model.gtm1.pdf_data_space(h_conv_1_all[42, :].view(1, -1)).cpu().detach().numpy())
                 axs2[0,0].set_title("Pre GTM Training - p(t|x,W)")
                 plt.colorbar(im, ax=axs2[0,0])
                 im = axs2[0,1].imshow(
-                    self.model.gtm2.pdf_data_space(h_conv_2_all[42, :].view(1, -1))[0, :, :].cpu().detach().numpy())
+                    self.model.gtm2.pdf_data_space(h_conv_2_all[42, :].view(1, -1)).cpu().detach().numpy())
                 axs2[0,1].set_title("Pre GTM Training - p(t|x,W)")
                 plt.colorbar(im, ax=axs2[0,1])
                 im = axs2[0,2].imshow(
-                    self.model.gtm3.pdf_data_space(h_conv_3_all[42, :].view(1, -1))[0, :, :].cpu().detach().numpy())
+                    self.model.gtm3.pdf_data_space(h_conv_3_all[42, :].view(1, -1)).cpu().detach().numpy())
                 axs2[0,2].set_title("Pre GTM Training - p(t|x,W)")
                 plt.colorbar(im, ax=axs2[0,2])
 
@@ -243,28 +267,45 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
         if self.verbose == 1 and split_id == 0:
             points = h_conv_1_all.matmul(torch.linalg.pinv(self.model.gtm1.W)).matmul(self.model.gtm1.matM)
-            axs[1, 0].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy())
+            axs[1, 0].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
+            axs[1, 0].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm1.beta.item()),
+                           verticalalignment='bottom', horizontalalignment='left', transform=axs[1, 0].transAxes)
             axs[1, 0].set_title("Post GTM Training - 1st layer")
             points = h_conv_2_all.matmul(torch.linalg.pinv(self.model.gtm2.W)).matmul(self.model.gtm2.matM)
-            axs[1, 1].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy())
+            axs[1, 1].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
+            axs[1, 1].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm2.beta.item()),
+                           verticalalignment='bottom', horizontalalignment='left', transform=axs[1, 1].transAxes)
             axs[1, 1].set_title("Post GTM Training - 2nd layer")
             points = h_conv_3_all.matmul(torch.linalg.pinv(self.model.gtm3.W)).matmul(self.model.gtm3.matM)
-            axs[1, 2].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy())
+            axs[1, 2].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
+            axs[1, 2].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm3.beta.item()),
+                           verticalalignment='bottom', horizontalalignment='left', transform=axs[1, 2].transAxes)
             axs[1, 2].set_title("Post GTM Training - 3rd layer")
 
             im2 = axs2[1,0].imshow(
-                self.model.gtm1.pdf_data_space(h_conv_1_all[42, :].view(1, -1))[0, :, :].cpu().detach().numpy())
+                self.model.gtm1.pdf_data_space(h_conv_1_all[42, :].view(1, -1)).cpu().detach().numpy())
             axs2[1,0].set_title("Post GTM Training - p(t|x,W)")
             plt.colorbar(im2, ax=axs2[1,0])
             im = axs2[1, 1].imshow(
-                self.model.gtm2.pdf_data_space(h_conv_2_all[42, :].view(1, -1))[0, :, :].cpu().detach().numpy())
+                self.model.gtm2.pdf_data_space(h_conv_2_all[42, :].view(1, -1)).cpu().detach().numpy())
             axs2[1, 1].set_title("Post GTM Training - p(t|x,W)")
             plt.colorbar(im, ax=axs2[1, 1])
             im = axs2[1, 2].imshow(
-                self.model.gtm3.pdf_data_space(h_conv_3_all[42, :].view(1, -1))[0, :, :].cpu().detach().numpy())
+                self.model.gtm3.pdf_data_space(h_conv_3_all[42, :].view(1, -1)).cpu().detach().numpy())
             axs2[1, 2].set_title("Post GTM Training - p(t|x,W)")
             plt.colorbar(im, ax=axs2[1, 2])
+
+            fig3, axs3 = plt.subplots()
+            axs3.plot(gtm_losses, label=['GTM1', "GTM2", "GTM3"])
+            axs3.set_title("GTM losses")
+            axs3.legend()
             plt.show()
+            curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            fig.savefig(log_path / Path('Points_projections_' + curr_time + '.png'))
+            fig2.savefig(log_path / Path('Prob_dist_' + curr_time + '.png'))
+            fig3.savefig(log_path / Path('Losses_' + curr_time + '.png'))
+
+            del h_conv_1_all, h_conv_2_all, h_conv_3_all, y_all, gtm_losses, points
 
         print(" # READ_OUT TRAIN # ")
         if torch.cuda.is_available(): torch.cuda.empty_cache()
@@ -446,7 +487,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             data = batch.to(self.device)
 
             if sub_model == "conv_out":
-                _, _, model_out = self.model(data, True)
+                _, _, model_out = self.model(data, conv_train=True)
             else:
                 model_out, _, _ = self.model(data)
 
