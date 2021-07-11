@@ -5,4 +5,5 @@
 *.pt
 .directory/
 .idea/
+*.out
 

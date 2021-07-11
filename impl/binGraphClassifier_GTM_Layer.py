@@ -141,7 +141,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
             self.model.gtm1.initialize(h_dataset[:, 0:self.model.out_channels])
             self.model.gtm2.initialize(h_dataset[:, self.model.out_channels:self.model.out_channels*2])
-            self.model.gtm2.initialize(h_dataset[:, self.model.out_channels * 2:])
+            self.model.gtm3.initialize(h_dataset[:, self.model.out_channels * 2:])
 
             del h_dataset, h_conv
 
@@ -170,7 +170,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
                 data = batch.to(self.device)
                 _, reps = torch.unique(data.batch.data,sorted=True, return_counts=True)
-                y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
+                if self.verbose == 1: y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
                 _, h_conv, _ = self.model(data, gtm_train=True)  # h, h_conv, gnn_out
 
                 h_conv_1 = h_conv[:, 0:self.model.out_channels]  # is equal to x1
@@ -193,7 +193,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
             epoch_time = time.time() - epoch_start_time
             epoch_time_sum += epoch_time
-            gtm_losses = np.append(gtm_losses,[gtm_losses_batch.mean(axis=0)], axis=0)
+            if self.verbose == 1: gtm_losses = np.append(gtm_losses,[gtm_losses_batch.mean(axis=0)], axis=0)
 
             if epoch == 0 and self.verbose == 1 and split_id == 0:
                 fig, axs = plt.subplots(2, 3, figsize=(20, 14))
@@ -218,15 +218,15 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 fig2, axs2 = plt.subplots(2,3, figsize = (10,7))
                 fig2.suptitle(test_name)
                 im = axs2[0,0].imshow(
-                    self.model.gtm1.pdf_data_space(h_conv_1_all[42, :].view(1, -1)).cpu().detach().numpy())
+                    self.model.gtm1.pdf_data_space(h_conv_1_all[42, :]))
                 axs2[0,0].set_title("Pre GTM Training - p(t|x,W)")
                 plt.colorbar(im, ax=axs2[0,0])
                 im = axs2[0,1].imshow(
-                    self.model.gtm2.pdf_data_space(h_conv_2_all[42, :].view(1, -1)).cpu().detach().numpy())
+                    self.model.gtm2.pdf_data_space(h_conv_2_all[42, :]))
                 axs2[0,1].set_title("Pre GTM Training - p(t|x,W)")
                 plt.colorbar(im, ax=axs2[0,1])
                 im = axs2[0,2].imshow(
-                    self.model.gtm3.pdf_data_space(h_conv_3_all[42, :].view(1, -1)).cpu().detach().numpy())
+                    self.model.gtm3.pdf_data_space(h_conv_3_all[42, :]))
                 axs2[0,2].set_title("Pre GTM Training - p(t|x,W)")
                 plt.colorbar(im, ax=axs2[0,2])
 
@@ -283,21 +283,21 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             axs[1, 2].set_title("Post GTM Training - 3rd layer")
 
             im2 = axs2[1,0].imshow(
-                self.model.gtm1.pdf_data_space(h_conv_1_all[42, :].view(1, -1)).cpu().detach().numpy())
+                self.model.gtm1.pdf_data_space(h_conv_1_all[42, :]))
             axs2[1,0].set_title("Post GTM Training - p(t|x,W)")
             plt.colorbar(im2, ax=axs2[1,0])
             im = axs2[1, 1].imshow(
-                self.model.gtm2.pdf_data_space(h_conv_2_all[42, :].view(1, -1)).cpu().detach().numpy())
+                self.model.gtm2.pdf_data_space(h_conv_2_all[42, :]))
             axs2[1, 1].set_title("Post GTM Training - p(t|x,W)")
             plt.colorbar(im, ax=axs2[1, 1])
             im = axs2[1, 2].imshow(
-                self.model.gtm3.pdf_data_space(h_conv_3_all[42, :].view(1, -1)).cpu().detach().numpy())
+                self.model.gtm3.pdf_data_space(h_conv_3_all[42, :]))
             axs2[1, 2].set_title("Post GTM Training - p(t|x,W)")
             plt.colorbar(im, ax=axs2[1, 2])
 
             fig3, axs3 = plt.subplots()
             axs3.plot(gtm_losses, label=['GTM1', "GTM2", "GTM3"])
-            axs3.set_title("GTM losses")
+            axs3.set_title("GTM losses - lr = " + str(self.lr_gtm))
             axs3.legend()
             plt.show()
             curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -372,21 +372,19 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             for batch in loader_train:
 
                 data = batch.to(self.device)
-                optimizer.zero_grad()  # ! THIS IS IMPORTANT
+                optimizer.zero_grad() # ! THIS IS IMPORTANT
                 if use_conv_out:
                     _, _, out = self.model(data, conv_train=True)  # h, h_conv, gnn_out
                 else:
                     out, _, _ = self.model(data)
 
-                loss = self.criterion(out,
-                                      data.y)  # TODO The input given through a forward call is expected to contain log-probabilities of each class also in GTM?
+                loss = self.criterion(out, data.y) # TODO The input given through a forward call is expected to contain log-probabilities of each class also in GTM?
                 # TODO questa è loss per ogni elemento del batch
 
                 loss.backward()
                 optimizer.step()
 
-                train_loss += loss.item() * len(
-                    out)  # TODO why * len(out)? Is it for averaging over batches? Ho una loss per grafo? dim(out)? numbrafi x targhet (=2)
+                train_loss += loss.item() * len(out) # TODO why * len(out)? Is it for averaging over batches? Ho una loss per grafo? dim(out)? numbrafi x targhet (=2)
                 n_samples += len(out)
 
             epoch_time = time.time() - epoch_start_time
@@ -503,10 +501,10 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         if sys.platform == 'win32':
             torch.save(self.model.state_dict(), longname(Path(os.path.join(os.getcwd(), test_name + '.pt'))))
         elif sys.platform == 'linux':
-            torch.save(self.model.state_dict(), os.path.join(os.getcwd(), "storage/test_log/", test_name + '.pt'))
+            torch.save(self.model.state_dict(), os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN", test_name + '.pt'))
 
     def load_model(self, test_name):
         if sys.platform == 'win32':
             self.model.load_state_dict(torch.load(longname(Path(os.path.join(os.getcwd(), test_name + '.pt')))))
         elif sys.platform == 'linux':
-            self.model.load_state_dict(torch.load(os.path.join(os.getcwd(), "storage/test_log/", test_name + '.pt')))
+            self.model.load_state_dict(torch.load(os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN", test_name + '.pt')))

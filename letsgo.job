@@ -1,6 +1,6 @@
 #!/bin/bash
 ### job name
-#PBS -N THESIS_GTM
+#PBS -N Thesis_GTM
 
 ### Programma non-rerunable
 #PBS -r n
@@ -17,7 +17,9 @@
 #PBS -q cuda
 
 ### Numero di host (nodes) occupati dal Job e numero di processi da allocare per nodo (ppn)
-#PBS -l nodes=1:ppn=1:cuda10
+####PBS -l nodes=1:ppn=1:cuda10
+#PBS -l nodes=1:ppn=8
+
 ### Memoria che ci si aspetta che il programma utilizzi
 #PBS -l mem=25g
 
@@ -26,7 +28,8 @@
 
 ###
 ### Mi sposto nella directory di lavoro
-cd ${HOME}/BlankJob/
+### cd ${HOME}/BlankJob/
+cd ${HOME}
 
 ### Alcuni comandi di shell che ci spostano nella nostra directory e stampano lo stato 
 ### del sistema prima dell'esecuzione
@@ -40,5 +43,7 @@ echo PBS_WORKDIR=$PBS_WORKDIR
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64
 
 ### Esecuzione del nostro programma
+source ~/miniconda3/etc/profile.d/conda.sh
+conda deactivate
 conda activate PyTorch_env
 python /home/frazzetp/Thesis_GTM/experiments/MUTAG/MUTAG_conv_gtm.py

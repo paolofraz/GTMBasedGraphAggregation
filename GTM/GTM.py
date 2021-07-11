@@ -9,7 +9,7 @@ torch.pi = torch.acos(torch.zeros(1)).item() * 2
 torch.set_default_dtype(torch.float32)  # TODO is it necessary? Replace NaNs manually?
 
 class GTM(nn.Module):
-    def __init__(self, input_size, out_size=(20, 18), m=12, sigma=None, alpha=1e-3, method='full_prob', device=None):
+    def __init__(self, input_size, out_size=(20, 18), m=12, sigma=None, gtm_lr=1e-3, method='full_prob', learning='standard', device=None):
         '''
         :param input_size: Dimension of t = (t1, ..., t_D), a.k.a D, e.g. 30
         :param out_size: nodes of a regular grid in latent space x = (x1, ..., x_L), L=2, #latent variables is K in papers
@@ -30,8 +30,9 @@ class GTM(nn.Module):
         self.n_latent_variables = out_size[0] * out_size[1]
         self.n_rfb = m
         self.method = method
+        self.learning = learning
         self.prev_likelihood_ = -float('inf')
-        self.alpha = torch.Tensor([alpha]).to(self.device) # regularization, = lambda in paper TODO fix with adaptive value as in SOM
+        self.gtm_lr = torch.Tensor([gtm_lr]).to(self.device) # regularization, = lambda in paper TODO fix with adaptive value as in SOM
 
         a = torch.linspace(-1, 1, out_size[0])
         b = torch.linspace(-1, 1, out_size[1])
@@ -83,22 +84,21 @@ class GTM(nn.Module):
     def responsibility(self, X):
         """
         R = posterior probability (w/o L!) = p(x|t,W,beta) = p(t|x,W,beta) / sum_i p(t|x_i,W,beta)
+        X = (batch_nodes, nn_units)
         """
         with torch.no_grad():
-            p = torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).add_(1e-10) #TODO checkthis regularization paramete, usa anche e-6
+            p = torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).add_(1e-6)
             return p.div(p.sum(dim=0))
 
-    def pdf_data_space(self,t):
+    def pdf_data_space(self,X):
         """
         Probability density function of a single point projected to latent space from data space.
         p(t|x_i,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x_i) - t||^2)
-        param: t point shaped as (1,-1) tensor
-        return a (1,out_size[0], out_size[1]) tensor
         """
-        #return ((self.beta / (2 * torch.pi)).pow_(t.shape[1] / 2).mul(torch.exp(torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).mul(-(self.beta.div(2))))).T.view(-1, self.out_size[0], self.out_size[1])
-        # TODO check exactly what I'm doing here...
-        #return result.T.view(-1, self.out_size[0], self.out_size[1])
-        return torch.exp(-torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).view(self.out_size[0], self.out_size[1])
+        R = self.responsibility(X.view(1,-1))
+        return R.view(self.out_size[0], self.out_size[1]).cpu().detach().numpy()
+        # older implementation:
+        # return torch.exp(-torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).view(self.out_size[0], self.out_size[1])
 
     def likelihood(self, X):
         """
@@ -181,21 +181,26 @@ class GTM(nn.Module):
         :return: loss (minimum distance)
         '''
 
-        # Set learning rate # TODO Learning rate/sigma vs regularization/alpha -> meno iperparametri usi meno c'è da convalidare
-        iter_correction = 1.0 - current_iter / max_iter
-        lr = lr * iter_correction
-        sigma = self.sigma * iter_correction
+        if self.learning == 'standard':
+            # Set learning rate # TODO Learning rate/sigma vs regularization/gtm_lr -> meno iperparametri usi meno c'è da convalidare
+            iter_correction = 1.0 - current_iter / max_iter
+            lr = lr * iter_correction
+            sigma = self.sigma * iter_correction
 
-        R = self.responsibility(x)
-        G = torch.diag(R.sum(dim=1))
-        self.W = torch.linalg.solve(
-            self.phi.T.matmul(G).matmul(self.phi) + (self.alpha / self.beta) * torch.eye(self.phi.shape[1], device=self.device),
-            self.phi.T.matmul(R).matmul(x)) # W is already transposed, W = M x D, contrary to the paper
+            R = self.responsibility(x)
+            G = torch.diag(R.sum(dim=1))
+            self.W = torch.linalg.solve(
+                self.phi.T.matmul(G).matmul(self.phi) + (self.gtm_lr / self.beta) * torch.eye(self.phi.shape[1], device=self.device),
+                self.phi.T.matmul(R).matmul(x)) # W is already transposed, W = M x D, contrary to the paper
 
-        self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2, compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
+            self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2, compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
 
-        return -self.likelihood(x).item() # - due to MINIMIZATION # TODO here likelihood / n_nodes as in forward? E' solo per un print
+            return -self.likelihood(x).item() # - due to MINIMIZATION # TODO here likelihood / n_nodes as in forward? E' solo per un print
 
+        elif self.learning == 'incremental':
+            pass
+        else:
+            pass
         batch_size = x.size()[0]
 
         # Set learning rate

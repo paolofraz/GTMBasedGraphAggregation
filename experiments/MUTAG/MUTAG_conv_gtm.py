@@ -10,10 +10,16 @@ from model.GNN_Conv_GTM import GNN_Conv_GTM
 from impl.binGraphClassifier_GTM_Layer import modelImplementation_GraphBinClassifier
 from utils.utils import printParOnFile, longname
 from data_reader.cross_validation_reader import getcross_validation_split
+import gc
 
 if __name__ == '__main__':
 
-    n_epochs_conv = 50#500
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    test_name = "discard_test_2_2_train_GNN_Conv_GTM"
+
+    n_epochs_conv = 100
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
@@ -23,24 +29,23 @@ if __name__ == '__main__':
     test_epoch = 1
 
     n_units = 30
-    lr_conv = 0.00005#0.0005
+    lr_conv = 0.00005  # 0.0005
     lr_readout = 0.0005
     lr_fine_tuning = 0.0001
-    weight_decay = 0#5e-4
-    drop_prob = 0#0.5
-    batch_size = 8
+    weight_decay = 0  # 5e-4
+    drop_prob = 0  # 0.5
+    batch_size = 16
 
     gtm_epoch = 50
     gtm_grids_dim = (15, 20)
-    gtm_lr = 0.005 #TODO make some sense out a GTM lr
-    gtm_rbf = 12 # this squared equals the amount of rbf basis functions, default = 10
+    gtm_lr = 1  # called alpha or lambda in papers
+    gtm_rbf = 12  # this squared equals the amount of rbf basis functions, default = 10
+    gtm_learning = 'standard'
 
     # early stopping par
     max_n_epochs_without_improvements = 25
-    early_stopping_threshold = 0.075
+    early_stopping_threshold = 0.25 # 0.075
     early_stopping_threshold_gtm = 0.02
-
-    test_name = "test_2_GNN_Conv_GTM"
 
     test_name = test_name + \
                 "_data-" + dataset_name + \
@@ -55,6 +60,7 @@ if __name__ == '__main__':
                 "_nHidden-" + str(n_units) + \
                 "_gtm_grid-" + str(gtm_grids_dim[0]) + "_" + str(gtm_grids_dim[1]) + \
                 "_gtm_lr-" + str(gtm_lr) + \
+                "_gtm_lear-" + str(gtm_learning) + \
                 "_gtm_rbf-" + str(gtm_rbf)
 
     if sys.platform == 'win32':
@@ -63,12 +69,14 @@ if __name__ == '__main__':
         training_log_dir = longname(training_log_dir)
         training_log_dir.mkdir(parents=True, exist_ok=True)
     elif sys.platform == 'linux':
-        training_log_dir = os.path.join(os.getcwd(),"storage/test_log/", test_name)
-        print(training_log_dir)
+        training_log_dir = os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN", test_name)
+        print("Dir: ", os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN"))
         if not os.path.exists(training_log_dir):
             os.makedirs(training_log_dir)
     else:
         sys.exit("Unsupported OS (Windows or Linux only)")
+
+    print("Name: ", test_name)
 
     printParOnFile(test_name=test_name, log_dir=training_log_dir,
                    par_list={"dataset_name": dataset_name,
@@ -84,6 +92,7 @@ if __name__ == '__main__':
                              "gtm_grid_dims": gtm_grids_dim,
                              "gtm_lr": gtm_lr,
                              "gtm_rbf": gtm_rbf,
+                             "gtm_lear": gtm_learning,
                              "test_epoch": test_epoch})
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -91,14 +100,14 @@ if __name__ == '__main__':
     criterion = torch.nn.NLLLoss()
 
     dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds,
-                                                  batch_size)  #TODO now it doesn't load (continuous) node attributes, is it correct? It add the diameter tough, lascialo. For MUTAG input is OneHot as desired
+                                                  batch_size)  # TODO now it doesn't load (continuous) node attributes, is it correct? It add the diameter tough, lascialo. For MUTAG input is OneHot as desired
     for split_id, split in enumerate(dataset_cv_splits):
         loader_train = split[0]
         loader_test = split[1]
         loader_valid = split[2]
 
-        model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, drop_prob).to(
-            device)
+        model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, gtm_lr,
+                             drop_prob, gtm_learning, device).to(device)
 
         model_impl = modelImplementation_GraphBinClassifier(model=model,
                                                             criterion=criterion,

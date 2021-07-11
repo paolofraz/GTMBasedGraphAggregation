@@ -10,9 +10,9 @@ import os
 
 class GNN_Conv_GTM(torch.nn.Module):
     """
-    MUTAG input = loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, drop_prob
+    input = loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, gtm_learning, drop_prob
     """
-    def __init__(self, in_channels, out_channels, n_class=2, gtm_grid_dims=(10, 10), rbf=10, dropout=0, device=None):
+    def __init__(self, in_channels, out_channels, n_class=2, gtm_grid_dims=(10, 10), rbf=10, gtm_lr=1e-3, dropout=0, learning='standard', device=None):
         super(GNN_Conv_GTM, self).__init__()
 
         if device is None:
@@ -31,7 +31,7 @@ class GNN_Conv_GTM(torch.nn.Module):
         #self.conv2 = GraphConv(self.out_channels, out_channels * 2)
         #self.conv3 = GraphConv(self.out_channels * 2, out_channels * 3)
         self.conv2 = GraphConv(self.out_channels, out_channels)
-        self.conv3 = GraphConv(self.out_channels, out_channels )
+        self.conv3 = GraphConv(self.out_channels, out_channels)
 
         self.act1 = torch.nn.LeakyReLU()
         self.act2 = torch.nn.LeakyReLU()
@@ -48,9 +48,9 @@ class GNN_Conv_GTM(torch.nn.Module):
         self.lin_GNN = torch.nn.Linear(out_channels * 3 * 3, n_class)
 
         # define gtm for read out
-        self.gtm1 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, method='full_prob', device=self.device, sigma=1)
-        self.gtm2 = GTM(out_channels , out_size=gtm_grid_dims, m=rbf, method='full_prob', device=self.device, sigma=1) # outchannel * 2
-        self.gtm3 = GTM(out_channels , out_size=gtm_grid_dims, m=rbf, method='full_prob', device=self.device, sigma=1) # outchannel * 3
+        self.gtm1 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1)
+        self.gtm2 = GTM(out_channels , out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1) # outchannel * 2
+        self.gtm3 = GTM(out_channels , out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1) # outchannel * 3
 
         # define read_out # TODO fix hardcoded dimension from GTM output (coming from MatM), or set to 2 for 2D punctual result (mean)
         self.out_conv1 = GraphConv(gtm_grid_dims[0] * gtm_grid_dims[1], self.out_channels)
