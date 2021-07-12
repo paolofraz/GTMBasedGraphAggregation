@@ -144,6 +144,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             self.model.gtm3.initialize(h_dataset[:, self.model.out_channels * 2:])
 
             del h_dataset, h_conv
+            print("------ GTM PCA Initialized ------")
 
         train_log, test_log, valid_log = prepare_log_files("_gtm_part_" + test_name + "--split-" + str(split_id),
                                                            log_path)
@@ -169,8 +170,10 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             for batch in loader_train:
 
                 data = batch.to(self.device)
-                _, reps = torch.unique(data.batch.data,sorted=True, return_counts=True)
-                if self.verbose == 1: y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
+
+                if self.verbose == 1 and split_id == 0:
+                    _, reps = torch.unique(data.batch.data, sorted=True, return_counts=True)
+                    y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
                 _, h_conv, _ = self.model(data, gtm_train=True)  # h, h_conv, gnn_out
 
                 h_conv_1 = h_conv[:, 0:self.model.out_channels]  # is equal to x1
@@ -193,7 +196,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
             epoch_time = time.time() - epoch_start_time
             epoch_time_sum += epoch_time
-            if self.verbose == 1: gtm_losses = np.append(gtm_losses,[gtm_losses_batch.mean(axis=0)], axis=0)
+            if self.verbose == 1 and split_id == 0: gtm_losses = np.append(gtm_losses,[gtm_losses_batch.mean(axis=0)], axis=0)
 
             if epoch == 0 and self.verbose == 1 and split_id == 0:
                 fig, axs = plt.subplots(2, 3, figsize=(20, 14))
@@ -241,6 +244,8 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                         0,  # acc_train_set,
                         epoch_time_sum / test_epoch,
                         train_loss / n_samples))
+
+                train_log.flush()
 
                 # early_stopping
                 if (train_loss / n_samples) < best_gtm_loss_so_far or best_gtm_loss_so_far == -1:
@@ -502,6 +507,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             torch.save(self.model.state_dict(), longname(Path(os.path.join(os.getcwd(), test_name + '.pt'))))
         elif sys.platform == 'linux':
             torch.save(self.model.state_dict(), os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN", test_name + '.pt'))
+            os.chmod(os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN", test_name + '.pt'), 0o755)
 
     def load_model(self, test_name):
         if sys.platform == 'win32':

@@ -49,8 +49,8 @@ class GNN_Conv_GTM(torch.nn.Module):
 
         # define gtm for read out
         self.gtm1 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1)
-        self.gtm2 = GTM(out_channels , out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1) # outchannel * 2
-        self.gtm3 = GTM(out_channels , out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1) # outchannel * 3
+        self.gtm2 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1) # outchannel * 2
+        self.gtm3 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device, sigma=1) # outchannel * 3
 
         # define read_out # TODO fix hardcoded dimension from GTM output (coming from MatM), or set to 2 for 2D punctual result (mean)
         self.out_conv1 = GraphConv(gtm_grid_dims[0] * gtm_grid_dims[1], self.out_channels)

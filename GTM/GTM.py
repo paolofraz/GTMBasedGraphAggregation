@@ -180,6 +180,7 @@ class GTM(nn.Module):
         :param max_iter: total epoch
         :return: loss (minimum distance)
         '''
+        n_nodes = x.size()[0]
 
         if self.learning == 'standard':
             # Set learning rate # TODO Learning rate/sigma vs regularization/gtm_lr -> meno iperparametri usi meno c'è da convalidare
@@ -195,12 +196,13 @@ class GTM(nn.Module):
 
             self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2, compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
 
-            return -self.likelihood(x).item() # - due to MINIMIZATION # TODO here likelihood / n_nodes as in forward? E' solo per un print
-
         elif self.learning == 'incremental':
             pass
         else:
             pass
+
+        return -self.likelihood(x).div_(n_nodes).item()  # - due to MINIMIZATION
+
         batch_size = x.size()[0]
 
         # Set learning rate

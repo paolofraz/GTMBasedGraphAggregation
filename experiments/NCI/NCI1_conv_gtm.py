@@ -17,6 +17,8 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
+    test_name = "discard_"
+
     n_epochs_conv = 1#500
     n_epochs_readout = 1#500
     n_epochs_fine_tuning = 1#500
@@ -34,9 +36,9 @@ if __name__ == '__main__':
     weight_decay_list = [5e-4, 5e-5]
     batch_size_list = [16, 32]
 
-    gtm_epoch = 400
-    gtm_grids_dim_list = [(10, 15), (15,20)]
-    gtm_lr = 0.005
+    gtm_epoch = 20
+    gtm_grids_dim_list = [(25, 20), (15,20)]
+    gtm_lr_list = [1e-3, 1e-2]
     gtm_rbf_list = [12, 18] # this squared equals the amount of rbf basis functions, default = 10
     gtm_learning = 'standard'
 
@@ -49,13 +51,12 @@ if __name__ == '__main__':
         for batch_size in batch_size_list:
             for weight_decay in weight_decay_list:
                 for gtm_grids_dim in gtm_grids_dim_list:
-                    for drop_prob in drop_prob_list:
+                    for gtm_lr in gtm_lr_list:
+                        for drop_prob in drop_prob_list:
                             for gtm_rbf in gtm_rbf_list:
 
                                 gc.collect()
                                 torch.cuda.empty_cache()
-
-                                test_name = "HPC_2_2"
 
                                 test_name = test_name + \
                                             "_data-" + dataset_name + \
@@ -69,6 +70,7 @@ if __name__ == '__main__':
                                             "_batchSize-" + str(batch_size) + \
                                             "_nHidden-" + str(n_units) + \
                                             "_gtm_grid-" + str(gtm_grids_dim[0]) + "_" + str(gtm_grids_dim[1]) + \
+                                            "_gtm_lr-" + str(gtm_lr) + \
                                             "_gtm_lear-" + str(gtm_learning) + \
                                             "_gtm_rbf-" + str(gtm_rbf)
 
@@ -80,14 +82,14 @@ if __name__ == '__main__':
                                     training_log_dir = longname(training_log_dir)
                                     training_log_dir.mkdir(parents=True, exist_ok=True)
                                 elif sys.platform == 'linux':
-                                                                training_log_dir = os.path.join(os.getcwd(),"Thesis_GTM/experiments/TORUN", test_name)
-                                                                print("Dir: ", os.path.join(os.getcwd(),"Thesis_GTM/experiments/TORUN"))
+                                    training_log_dir = os.path.join(os.getcwd(),"Thesis_GTM/experiments/TORUN", test_name)
+                                    print("Dir: ", os.path.join(os.getcwd(),"Thesis_GTM/experiments/TORUN"))
                                     if not os.path.exists(training_log_dir):
                                         os.makedirs(training_log_dir)
                                 else:
                                     sys.exit("Unsupported OS (Windows or Linux only)")
 
-                                                            print("Name: ", test_name)
+                                print("Name: ", test_name)
 
                                 printParOnFile(test_name=test_name, log_dir=training_log_dir,
                                                par_list={"dataset_name": dataset_name,
@@ -116,8 +118,9 @@ if __name__ == '__main__':
                                     loader_test = split[1]
                                     loader_valid = split[2]
 
-                                    model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, drop_prob, gtm_learning, device).to(
-                                        device)
+                                    model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes,
+                                                         gtm_grids_dim, gtm_rbf, gtm_lr,
+                                                         drop_prob, gtm_learning, device).to(device)
 
                                     model_impl = modelImplementation_GraphBinClassifier(model=model,
                                                                                         criterion=criterion,
