@@ -17,9 +17,9 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    test_name = "discard_test_2_2_train_GNN_Conv_GTM"
+    test_name = "lr_test_2_3_GTM"
 
-    n_epochs_conv = 100
+    n_epochs_conv = 200
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
@@ -38,14 +38,14 @@ if __name__ == '__main__':
 
     gtm_epoch = 50
     gtm_grids_dim = (15, 20)
-    gtm_lr = 1  # called alpha or lambda in papers
+    gtm_lr = 0.1  # called alpha or lambda in papers
     gtm_rbf = 12  # this squared equals the amount of rbf basis functions, default = 10
-    gtm_learning = 'standard'
+    gtm_learning = 'incremental'
 
     # early stopping par
-    max_n_epochs_without_improvements = 25
+    max_n_epochs_without_improvements = 10
     early_stopping_threshold = 0.25 # 0.075
-    early_stopping_threshold_gtm = 0.02
+    early_stopping_threshold_gtm = 0.1
 
     test_name = test_name + \
                 "_data-" + dataset_name + \

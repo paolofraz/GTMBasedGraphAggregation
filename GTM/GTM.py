@@ -79,6 +79,16 @@ class GTM(nn.Module):
         self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)  # TODO "Parameter"?
         #self.beta = nn.Parameter(self.beta, requires_grad=False)
 
+        if self.learning=='incremental':
+            # Initialize R for the whole training set with uniform probability 1/K
+            self.R_inc = torch.zeros((self.n_latent_variables, t.shape[0]), device=self.device) # K x N matrix
+            self.R_inc = self.R_inc.fill_(1./self.n_latent_variables)
+            #self.G_inc = torch.diag(self.R_inc.sum(dim=1)) # K x K matrix
+            self.RX_inc = self.R_inc.matmul(t) # K x D matrix
+            self.X_inc = t.clone()
+            self.second_old = 0
+
+
         self.to_be_initialized = False
 
     def responsibility(self, X):
@@ -95,19 +105,25 @@ class GTM(nn.Module):
         Probability density function of a single point projected to latent space from data space.
         p(t|x_i,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x_i) - t||^2)
         """
-        R = self.responsibility(X.view(1,-1))
+        if self.learning == 'incremental':
+            R = self.R_inc[:, 42]
+        else:
+            R = self.responsibility(X.view(1,-1))
         return R.view(self.out_size[0], self.out_size[1]).cpu().detach().numpy()
         # older implementation:
         # return torch.exp(-torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).view(self.out_size[0], self.out_size[1])
 
-    def likelihood(self, X):
+    def likelihood(self, X, R=None):
         """
         p(t|x,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x) - t||^2)
         ln p = k1 + k2 = D/2 * ln(beta/2pi) + (-beta/2 * ||W.psi - t||^2)
         This leads to the complete-data log likelihood used in EM Eq (10)
         """
         with torch.no_grad(): # TODO check whether needs grad or not -> no because of EM
-            R = self.responsibility(X)
+            if R != None and self.learning == 'incremental':
+                R = self.R_inc
+            else:
+                R = self.responsibility(X)
             D = X.shape[1]
             k1 = torch.log(self.beta / (2 * torch.pi)).mul(D / 2)
             k2 = (torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).mul(-(self.beta.div(2)))
@@ -172,7 +188,7 @@ class GTM(nn.Module):
 
         return bmu_locations, losses.sum().div_(n_nodes).item(), GTM_output
 
-    def train_aggregator(self, x, current_iter, max_iter, lr):
+    def train_aggregator(self, x, current_iter, max_iter, lr, first, second):
         '''
         Train the GTM
         :param x: training data (aka t)
@@ -190,18 +206,39 @@ class GTM(nn.Module):
 
             R = self.responsibility(x)
             G = torch.diag(R.sum(dim=1))
+
             self.W = torch.linalg.solve(
                 self.phi.T.matmul(G).matmul(self.phi) + (self.gtm_lr / self.beta) * torch.eye(self.phi.shape[1], device=self.device),
                 self.phi.T.matmul(R).matmul(x)) # W is already transposed, W = M x D, contrary to the paper
 
             self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2, compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
 
-        elif self.learning == 'incremental':
-            pass
-        else:
-            pass
+            return -self.likelihood(x).div_(n_nodes).item()  # - due to MINIMIZATION
 
-        return -self.likelihood(x).div_(n_nodes).item()  # - due to MINIMIZATION
+        elif self.learning == 'incremental':
+            if self.second_old > second: # new epoch, perform M-step
+                G = torch.diag(self.R_inc.sum(dim=1))
+                self.W = torch.linalg.solve(
+                    self.phi.T.matmul(G).matmul(self.phi) + (self.gtm_lr / self.beta) * torch.eye(self.phi.shape[1], device=self.device),
+                    self.phi.T.matmul(self.RX_inc))
+
+                # TODO set beta as incremental too (here it's still batched)
+                R = self.responsibility(x)
+                self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2,
+                                                    compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
+
+                self.second_old = 0
+
+            R_old = self.R_inc[:, first:second]
+            self.R_inc[:, first:second] = self.responsibility(x)
+            #torch.diagonal(self.G_inc) = torch.diagonal(self.G_inc) + self.R_inc[:,first:second] - R_old
+            self.RX_inc += (self.R_inc[:, first:second] - R_old).matmul(x)
+            self.second_old = second
+
+            return -self.likelihood(self.X_inc, 1).div_(self.R_inc.shape[1]).item()  # - due to MINIMIZATION
+
+        else:
+            return print("Invalid Learning Method")
 
         batch_size = x.size()[0]
 

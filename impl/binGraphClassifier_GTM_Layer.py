@@ -133,7 +133,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         # --- GTM PCA Initialization ---
         self.model.eval()
         with torch.no_grad():
-            h_dataset = torch.empty((0,self.model.out_channels * 3), device=self.device)
+            h_dataset = torch.empty((0, self.model.out_channels * 3), device=self.device)
             for batch in loader_train:
                 data = batch.to(self.device)
                 _, h_conv, _ = self.model(data, gtm_train=True)
@@ -154,6 +154,8 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         best_epoch_gtm = 0
         best_gtm_loss_so_far = -1
         gtm_n_epochs_without_improvements = 0
+
+        # Plots
         self.verbose = 1
         if self.verbose == 1:
             h_conv_1_all = torch.empty((0, self.model.out_channels), device=self.device)
@@ -167,13 +169,17 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
             epoch_start_time = time.time()
             gtm_losses_batch = np.empty((0, 3))
+            first_idx = 0
+            second_idx = 0
             for batch in loader_train:
 
                 data = batch.to(self.device)
+                second_idx = first_idx + data.x.shape[0]
 
                 if self.verbose == 1 and split_id == 0:
                     _, reps = torch.unique(data.batch.data, sorted=True, return_counts=True)
                     y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
+
                 _, h_conv, _ = self.model(data, gtm_train=True)  # h, h_conv, gnn_out
 
                 h_conv_1 = h_conv[:, 0:self.model.out_channels]  # is equal to x1
@@ -181,12 +187,13 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                            self.model.out_channels:self.model.out_channels + self.model.out_channels]  # x2
                 h_conv_3 = h_conv[:,self.model.out_channels * 2:]  # x3
 
-                gtm_1_loss = self.model.gtm1.train_aggregator(h_conv_1, epoch, n_epochs_gtm, self.lr_gtm)
-                gtm_2_loss = self.model.gtm2.train_aggregator(h_conv_2, epoch, n_epochs_gtm, self.lr_gtm)
-                gtm_3_loss = self.model.gtm3.train_aggregator(h_conv_3, epoch, n_epochs_gtm, self.lr_gtm)
+                gtm_1_loss = self.model.gtm1.train_aggregator(h_conv_1, epoch, n_epochs_gtm, self.lr_gtm, first_idx, second_idx)
+                gtm_2_loss = self.model.gtm2.train_aggregator(h_conv_2, epoch, n_epochs_gtm, self.lr_gtm, first_idx, second_idx)
+                gtm_3_loss = self.model.gtm3.train_aggregator(h_conv_3, epoch, n_epochs_gtm, self.lr_gtm, first_idx, second_idx)
 
                 train_loss += gtm_1_loss + gtm_2_loss + gtm_3_loss
-                n_samples += len(batch)
+                n_samples += len(batch) # TODO sitemare early stopping per incremental learning/complete data likelihood
+                first_idx = second_idx
 
                 if self.verbose == 1 and split_id == 0:
                     h_conv_1_all = torch.cat((h_conv_1_all, h_conv_1), 0)
@@ -196,6 +203,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
             epoch_time = time.time() - epoch_start_time
             epoch_time_sum += epoch_time
+
             if self.verbose == 1 and split_id == 0: gtm_losses = np.append(gtm_losses,[gtm_losses_batch.mean(axis=0)], axis=0)
 
             if epoch == 0 and self.verbose == 1 and split_id == 0:

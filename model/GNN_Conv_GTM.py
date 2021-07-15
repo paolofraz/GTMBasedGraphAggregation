@@ -122,6 +122,9 @@ class GNN_Conv_GTM(torch.nn.Module):
 
         h_conv = torch.cat([x1, x2, x3], dim=1)
 
+        if gtm_train:
+            return None, h_conv, None
+
         # compute GNN only output
         conv_batch_avg = gap(h_conv, data.batch)
         conv_batch_add = gadd(h_conv, data.batch)
@@ -141,9 +144,6 @@ class GNN_Conv_GTM(torch.nn.Module):
         _, gtm_out_1 = self.gtm1(x1) # Eq (8)
         _, gtm_out_2 = self.gtm2(x2) # gtm_out has size (#node representations ,#latent variables)
         _, gtm_out_3 = self.gtm3(x3)
-
-        if gtm_train:
-            return None, h_conv, None
 
         with torch.no_grad(): # Set Max = 1 for GTM outputs (so they are bounded in [0,1])
             gtm_out_1 /= gtm_out_1.max(axis=1, keepdim=True).values

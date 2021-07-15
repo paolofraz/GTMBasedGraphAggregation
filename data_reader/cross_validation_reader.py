@@ -3,7 +3,7 @@ from random import seed
 import numpy as np
 import random
 from torch_geometric.datasets import TUDataset
-from torch_geometric.data import DataLoader
+from torch_geometric.data import DataLoader, Dataset
 
 from utils.utils import get_graph_diameter
 
@@ -79,7 +79,7 @@ def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_na
 
             loader = DataLoader(gdata,
                                 batch_size=batch_size,
-                                shuffle=True,
+                                shuffle=False, # True to have the data reshuffled at every epoch, hinders incremental learning
                                 pin_memory=True,
                                 #persistent_workers=True,
                                 num_workers=0)#, TODO LINUX=Set this to 4; https://github.com/pytorch/pytorch/issues/12831 and https://betterprogramming.pub/how-to-make-your-pytorch-code-run-faster-93079f3c1f7b
@@ -89,6 +89,17 @@ def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_na
         # print("---")
 
     return splits #0-train, 1-test, 2-valid
+
+class MyDataset(Dataset):
+    def __init__(self, root, name, pre_transform, use_node_attr):
+        self.TUDataset = TUDataset(root=root, name=name, pre_transform=pre_transform, use_node_attr=use_node_attr)
+
+    def __getitem__(self, index):
+        data, target  = self.TUDataset[index]
+        return data, target, index
+
+    def __len__(self):
+        return len(self.TUDataset)
 
 if __name__ == '__main__':
     cv_splits= getcross_validation_split(n_folds=10)
