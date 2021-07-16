@@ -9,32 +9,6 @@ from utils.utils import get_graph_diameter
 
 rnd_state = np.random.RandomState(seed(1))
 
-def collate_batch(batch):
-    '''
-    Creates a batch of same size graphs by zero-padding node features and adjacency matrices up to
-    the maximum number of nodes in the CURRENT batch rather than in the entire dataset.
-    Graphs in the batches are usually much smaller than the largest graph in the dataset, so this method is fast.
-    :param batch: batch in the PyTorch Geometric format or [node_features*batch_size, A*batch_size, label*batch_size]
-    :return: [node_features, A, graph_support, N_nodes, label]
-    '''
-    B = len(batch)
-    N_nodes = [len(batch[b].x) for b in range(B)]
-    C = batch[0].x.shape[1]
-
-    N_nodes_max = int(np.max(N_nodes))
-
-    graph_support = torch.zeros(B, N_nodes_max)
-    A = torch.zeros(B, N_nodes_max, N_nodes_max)
-    x = torch.zeros(B, N_nodes_max, C)
-    for b in range(B):
-        x[b, :N_nodes[b]] = batch[b].x
-        A[b].index_put_((batch[b].edge_index[0], batch[b].edge_index[1]), torch.Tensor([1]))
-        graph_support[b][:N_nodes[b]] = 1  # mask with values of 0 for dummy (zero padded) nodes, otherwise 1
-
-    N_nodes = torch.from_numpy(np.array(N_nodes)).long()
-    labels = torch.from_numpy(np.array([batch[b].y  for b in range(B)])).long()
-    return [x, A, graph_support, N_nodes, labels]
-
 def split_ids(ids, folds=10):
     """
     Function that returns train, test and validation splits ids
@@ -83,7 +57,6 @@ def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_na
                                 pin_memory=True,
                                 #persistent_workers=True,
                                 num_workers=0)#, TODO LINUX=Set this to 4; https://github.com/pytorch/pytorch/issues/12831 and https://betterprogramming.pub/how-to-make-your-pytorch-code-run-faster-93079f3c1f7b
-                                #collate_fn=collate_batch) # this tells the DataLoader how it could make batches
             loaders.append(loader)
         splits.append(loaders)
         # print("---")

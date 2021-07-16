@@ -17,7 +17,8 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    test_name = "lr_test_2_3_GTM"
+    test_name = "batch_test_2_4_GTM"
+    verbose = 1
 
     n_epochs_conv = 200
     n_epochs_readout = 500
@@ -38,13 +39,13 @@ if __name__ == '__main__':
 
     gtm_epoch = 50
     gtm_grids_dim = (15, 20)
-    gtm_lr = 0.1  # called alpha or lambda in papers
+    gtm_lr = 0  # called alpha or lambda in papers
     gtm_rbf = 12  # this squared equals the amount of rbf basis functions, default = 10
-    gtm_learning = 'incremental'
+    gtm_learning = 'standard' # standard or incremental
 
     # early stopping par
-    max_n_epochs_without_improvements = 10
-    early_stopping_threshold = 0.25 # 0.075
+    max_n_epochs_without_improvements = 20
+    early_stopping_threshold = 0.075
     early_stopping_threshold_gtm = 0.1
 
     test_name = test_name + \
@@ -111,7 +112,8 @@ if __name__ == '__main__':
 
         model_impl = modelImplementation_GraphBinClassifier(model=model,
                                                             criterion=criterion,
-                                                            device=device).to(device)
+                                                            device=device,
+                                                            verbose=verbose).to(device)
 
         model_impl.set_optimizer(lr_conv=lr_conv,
                                  lr_gtm=gtm_lr,

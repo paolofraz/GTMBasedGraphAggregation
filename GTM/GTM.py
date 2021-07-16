@@ -76,7 +76,7 @@ class GTM(nn.Module):
         inter_dist.fill_diagonal_(float('inf'))
         betainv2 = inter_dist.min(dim=0).values.mean().item() / 2.
 
-        self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)  # TODO "Parameter"?
+        self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)
         #self.beta = nn.Parameter(self.beta, requires_grad=False)
 
         if self.learning=='incremental':
@@ -85,7 +85,7 @@ class GTM(nn.Module):
             self.R_inc = self.R_inc.fill_(1./self.n_latent_variables)
             #self.G_inc = torch.diag(self.R_inc.sum(dim=1)) # K x K matrix
             self.RX_inc = self.R_inc.matmul(t) # K x D matrix
-            self.X_inc = t.clone()
+            self.X_inc = t
             self.second_old = 0
 
 
@@ -229,7 +229,7 @@ class GTM(nn.Module):
 
                 self.second_old = 0
 
-            R_old = self.R_inc[:, first:second]
+            R_old = self.R_inc[:, first:second].clone()
             self.R_inc[:, first:second] = self.responsibility(x)
             #torch.diagonal(self.G_inc) = torch.diagonal(self.G_inc) + self.R_inc[:,first:second] - R_old
             self.RX_inc += (self.R_inc[:, first:second] - R_old).matmul(x)
