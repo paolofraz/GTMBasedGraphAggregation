@@ -88,7 +88,7 @@ class GTM(nn.Module):
             self.X_inc = t
             self.second_old = 0
 
-
+        print("Input dataset size: ", t.shape)
         self.to_be_initialized = False
 
     def responsibility(self, X):
@@ -113,15 +113,33 @@ class GTM(nn.Module):
         # older implementation:
         # return torch.exp(-torch.cdist(self.phi.matmul(self.W), t.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).view(self.out_size[0], self.out_size[1])
 
-    def likelihood(self, X, R=None):
+    def log_likelihood(self, X=None):
+        """
+        p(t|x,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x) - t||^2)
+        L = sum_n ln(1/K sum_i p(t|x,W,beta))
+        """
+        with torch.no_grad():
+            if self.learning == 'incremental':
+                R = self.R_inc
+                X = self.X_inc
+            else:
+                R = self.responsibility(X)
+            D = X.shape[1]
+            k1 = (self.beta / (2 * torch.pi)).pow(D / 2)
+            k2 = k1 * torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2, compute_mode= 'donot_use_mm_for_euclid_dist') ** 2).add_(1e-6)
+
+            return torch.log(k2.sum(axis=0)/self.n_latent_variables).sum()
+
+    def likelihood(self, X=None):
         """
         p(t|x,W,beta) = (beta/2pi)^D/2 * exp(-beta/2 * ||y(W,x) - t||^2)
         ln p = k1 + k2 = D/2 * ln(beta/2pi) + (-beta/2 * ||W.psi - t||^2)
         This leads to the complete-data log likelihood used in EM Eq (10)
         """
-        with torch.no_grad(): # TODO check whether needs grad or not -> no because of EM
-            if R != None and self.learning == 'incremental':
+        with torch.no_grad():
+            if self.learning == 'incremental':
                 R = self.R_inc
+                X = self.X_inc
             else:
                 R = self.responsibility(X)
             D = X.shape[1]
@@ -213,20 +231,18 @@ class GTM(nn.Module):
 
             self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2, compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
 
-            return -self.likelihood(x).div_(n_nodes).item()  # - due to MINIMIZATION
+            return -self.likelihood(x).div(n_nodes).item()  # - due to MINIMIZATION
 
         elif self.learning == 'incremental':
             if self.second_old > second: # new epoch, perform M-step
-                G = torch.diag(self.R_inc.sum(dim=1))
+                G = torch.diag(self.R_inc.sum(dim=1)) # compute G not incrementally
                 self.W = torch.linalg.solve(
                     self.phi.T.matmul(G).matmul(self.phi) + (self.gtm_lr / self.beta) * torch.eye(self.phi.shape[1], device=self.device),
                     self.phi.T.matmul(self.RX_inc))
 
-                # TODO set beta as incremental too (here it's still batched)
-                R = self.responsibility(x)
-                self.beta = x.numel() / torch.cdist(self.phi.matmul(self.W), x.to(self.device), p=2,
-                                                    compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(R).sum()
-
+                # estimate inverse variance beta non incrementally - that would require also a copy of W
+                self.beta = self.X_inc.numel() / torch.cdist(self.phi.matmul(self.W), self.X_inc, p=2,
+                                                    compute_mode='donot_use_mm_for_euclid_dist').pow_(2).mul_(self.R_inc).sum()
                 self.second_old = 0
 
             R_old = self.R_inc[:, first:second].clone()
@@ -235,7 +251,7 @@ class GTM(nn.Module):
             self.RX_inc += (self.R_inc[:, first:second] - R_old).matmul(x)
             self.second_old = second
 
-            return -self.likelihood(self.X_inc, 1).div_(self.R_inc.shape[1]).item()  # - due to MINIMIZATION
+            return -self.log_likelihood(self.X_inc).div(self.R_inc.shape[0]).item()  # - due to MINIMIZATION
 
         else:
             return print("Invalid Learning Method")

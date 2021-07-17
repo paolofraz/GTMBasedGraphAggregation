@@ -17,35 +17,35 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    test_name = "discard_2_4_GTM"
+    test_name = "discard_"
     verbose = 1
 
     n_epochs_conv = 200
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
-    dataset_path = '~/storage/Dataset/'
-    dataset_name = 'MUTAG'
-    n_folds = 3
+    dataset_path = '~/storage/Dataset/PTC_MR'
+    dataset_name = 'PTC_MR'
+    n_folds = 10
     test_epoch = 1
 
     n_units = 30
     lr_conv = 0.00005  # 0.0005
     lr_readout = 0.0005
     lr_fine_tuning = 0.0001
-    weight_decay = 0  # 5e-4
-    drop_prob = 0  # 0.5
+    weight_decay = 5e-4
+    drop_prob = 0.5
     batch_size = 8
 
-    gtm_epoch = 30
-    gtm_grids_dim = (15, 20)
-    gtm_lr = 100 #0.001  # called alpha or lambda in papers
-    gtm_rbf = 8  # this squared equals the amount of rbf basis functions, default = 10
+    gtm_epoch = 100
+    gtm_grids_dim = (18, 20)
+    gtm_lr = 0.0001  # called alpha or lambda in papers
+    gtm_rbf = 12  # this squared equals the amount of rbf basis functions, default = 10
     gtm_learning = 'incremental' # standard or incremental
 
     # early stopping par
-    max_n_epochs_without_improvements = 10
-    early_stopping_threshold = 0.05
+    max_n_epochs_without_improvements = 20
+    early_stopping_threshold = 0.075
     early_stopping_threshold_gtm = 0.05
 
     test_name = test_name + \

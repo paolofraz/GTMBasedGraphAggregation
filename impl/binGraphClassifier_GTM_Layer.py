@@ -114,7 +114,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                             optimizer=self.conv_optimizer,
                             loader_train=loader_train,
                             loader_test=loader_test,
-                            loader_valid=loader_train,#loader_valid, # TODO SISTEMA!
+                            loader_valid=loader_valid, # TODO SISTEMA!
                             test_epoch=test_epoch,
                             log_file_name="_conv_part_" + test_name,
                             split_id=split_id,
@@ -143,7 +143,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             for batch in loader_train:
                 data = batch.to(self.device)
                 _, h_conv, _ = self.model(data, gtm_train=True)
-                h_dataset = torch.cat((h_conv, h_dataset), 0)
+                h_dataset = torch.cat((h_dataset, h_conv), 0)
                 if self.verbose == 1 and split_id == 0:
                     _, reps = torch.unique(data.batch.data, sorted=True, return_counts=True)
                     y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
@@ -169,7 +169,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         gtm_n_epochs_without_improvements = 0
 
         for epoch in range(n_epochs_gtm):
-            self.model.train()
+            self.model.eval()
 
             epoch_start_time = time.time()
             gtm_losses_batch = np.empty((0, 3))
@@ -207,6 +207,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 fig.suptitle(test_name)
                 colormap = np.array(['navy', 'firebrick'])
                 y_all = y_all.astype(int)
+                # TODO fix this properly with probabilities
                 points = h_conv_1.matmul(torch.linalg.pinv(self.model.gtm1.W)).matmul(self.model.gtm1.matM)
                 axs[0, 0].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
                 axs[0, 0].text(0.01, 0.01, "Beta = "+"{:.4f}".format(self.model.gtm1.beta.item()), verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 0].transAxes)
@@ -221,6 +222,8 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 axs[0, 2].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm3.beta.item()),
                                verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 2].transAxes)
                 axs[0, 2].set_title("Pre GTM Training - 3rd layer")
+
+            if epoch == 1 and self.verbose == 1 and split_id == 0:
 
                 fig2, axs2 = plt.subplots(2,3, figsize = (10,7))
                 fig2.suptitle(test_name)
