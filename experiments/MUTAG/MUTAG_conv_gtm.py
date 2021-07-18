@@ -17,7 +17,7 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    test_name = "discard_2_4_GTM"
+    test_name = "discard_2_5_GTM"
     verbose = 1
 
     n_epochs_conv = 200
@@ -39,8 +39,9 @@ if __name__ == '__main__':
 
     gtm_epoch = 30
     gtm_grids_dim = (15, 20)
-    gtm_lr = 100 #0.001  # called alpha or lambda in papers
-    gtm_rbf = 8  # this squared equals the amount of rbf basis functions, default = 10
+    gtm_lr = 0.01 #0.001  # called alpha or lambda in papers
+    gtm_rbf = 12  # this squared equals the amount of rbf basis functions, default = 10
+    gtm_sigma = None
     gtm_learning = 'incremental' # standard or incremental
 
     # early stopping par
@@ -59,10 +60,11 @@ if __name__ == '__main__':
                 "_weight-decay-" + str(weight_decay) + \
                 "_batchSize-" + str(batch_size) + \
                 "_nHidden-" + str(n_units) + \
-                "_gtm_grid-" + str(gtm_grids_dim[0]) + "_" + str(gtm_grids_dim[1]) + \
-                "_gtm_lr-" + str(gtm_lr) + \
-                "_gtm_lear-" + str(gtm_learning) + \
-                "_gtm_rbf-" + str(gtm_rbf)
+                "_grid-" + str(gtm_grids_dim[0]) + "_" + str(gtm_grids_dim[1]) + \
+                "_lr-" + str(gtm_lr) + \
+                "_lear-" + str(gtm_learning) + \
+                "_rbf-" + str(gtm_rbf) + \
+                "_s-" + str(gtm_sigma)
 
     if sys.platform == 'win32':
         # Windows compatible paths
@@ -93,8 +95,10 @@ if __name__ == '__main__':
                              "gtm_grid_dims": gtm_grids_dim,
                              "gtm_lr": gtm_lr,
                              "gtm_rbf": gtm_rbf,
+                             "gtm_sigma": gtm_sigma,
                              "gtm_lear": gtm_learning,
                              "test_epoch": test_epoch})
+
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -107,7 +111,7 @@ if __name__ == '__main__':
         loader_test = split[1]
         loader_valid = split[2]
 
-        model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, gtm_lr,
+        model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, gtm_sigma, gtm_lr,
                              drop_prob, gtm_learning, device).to(device)
 
         model_impl = modelImplementation_GraphBinClassifier(model=model,

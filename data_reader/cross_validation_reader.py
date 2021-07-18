@@ -3,7 +3,7 @@ from random import seed
 import numpy as np
 import random
 from torch_geometric.datasets import TUDataset
-from torch_geometric.data import DataLoader, Dataset
+from torch_geometric.data import DataLoader
 
 from utils.utils import get_graph_diameter
 
@@ -62,17 +62,6 @@ def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_na
         # print("---")
 
     return splits #0-train, 1-test, 2-valid
-
-class MyDataset(Dataset):
-    def __init__(self, root, name, pre_transform, use_node_attr):
-        self.TUDataset = TUDataset(root=root, name=name, pre_transform=pre_transform, use_node_attr=use_node_attr)
-
-    def __getitem__(self, index):
-        data, target  = self.TUDataset[index]
-        return data, target, index
-
-    def __len__(self):
-        return len(self.TUDataset)
 
 if __name__ == '__main__':
     cv_splits= getcross_validation_split(n_folds=10)
