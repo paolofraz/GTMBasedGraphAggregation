@@ -28,20 +28,24 @@ class GNN_Conv_GTM(torch.nn.Module):
         self.conv0 = GraphConv(self.in_channels, self.in_channels, bias=False) #TODO This is never used?? why here bias (and req_grad) is False? Trick per passare da sparso onehot a valore reale più denso
 
         self.conv1 = GraphConv(self.in_channels, self.out_channels)
+        self.conv2 = GraphConv(self.out_channels, out_channels)
+        self.conv3 = GraphConv(self.out_channels, out_channels)
         # ! FENNEL
         #self.conv2 = GraphConv(self.out_channels, out_channels * 2)
         #self.conv3 = GraphConv(self.out_channels * 2, out_channels * 3)
-        self.conv2 = GraphConv(self.out_channels, out_channels)
-        self.conv3 = GraphConv(self.out_channels, out_channels)
+
 
         self.act1 = torch.nn.LeakyReLU()
         self.act2 = torch.nn.LeakyReLU()
         self.act3 = torch.nn.LeakyReLU()
 
         self.norm1 = torch.nn.BatchNorm1d(self.out_channels)
-        # ! FENNEL
         self.norm2 = torch.nn.BatchNorm1d(self.out_channels) #* 2)
         self.norm3 = torch.nn.BatchNorm1d(self.out_channels) #* 3)
+
+        # ! FENNEL
+        #self.norm2 = torch.nn.BatchNorm1d(self.out_channels) #* 2)
+        #self.norm3 = torch.nn.BatchNorm1d(self.out_channels) #* 3)
 
         self.dropout = torch.nn.Dropout(p=dropout)
 

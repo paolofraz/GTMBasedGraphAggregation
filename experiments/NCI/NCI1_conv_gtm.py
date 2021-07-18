@@ -17,7 +17,7 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    test_name = "discard_2_5_GTM"
+    name = "discard"
     verbose = 1
 
     n_epochs_conv = 1  # 500
@@ -61,7 +61,7 @@ if __name__ == '__main__':
                                     gc.collect()
                                     torch.cuda.empty_cache()
 
-                                    test_name = test_name + \
+                                    test_name = name + \
                                                 "_data-" + dataset_name + \
                                                 "_nFold-" + str(n_folds) + \
                                                 "_lr_conv-" + str(lr_conv) + \
@@ -112,9 +112,8 @@ if __name__ == '__main__':
                                                              "gtm_lear": gtm_learning,
                                                              "test_epoch": test_epoch})
 
-                                    print(test_name)
-
                                     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                                    print("Device: ", device)
 
                                     criterion = torch.nn.NLLLoss()
 
