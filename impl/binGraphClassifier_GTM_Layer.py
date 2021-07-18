@@ -114,7 +114,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                             optimizer=self.conv_optimizer,
                             loader_train=loader_train,
                             loader_test=loader_test,
-                            loader_valid=loader_valid, # TODO SISTEMA!
+                            loader_valid=loader_valid,
                             test_epoch=test_epoch,
                             log_file_name="_conv_part_" + test_name,
                             split_id=split_id,
@@ -139,7 +139,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         # --- GTM PCA Initialization ---
         self.model.eval()
         with torch.no_grad():
-            h_dataset = torch.empty((0, self.model.out_channels * 3), device=self.device)
+            h_dataset = torch.empty((0, self.model.out_channels * 3), device=self.device) # ! FENNEL
             for batch in loader_train:
                 data = batch.to(self.device)
                 _, h_conv, _ = self.model(data, gtm_train=True)
@@ -151,6 +151,10 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             h_conv_1 = h_dataset[:, 0:self.model.out_channels]
             h_conv_2 = h_dataset[:, self.model.out_channels:self.model.out_channels * 2]
             h_conv_3 = h_dataset[:, self.model.out_channels * 2:]
+
+            # ! FENNEL
+            #h_conv_2 = h_dataset[:, self.model.out_channels:self.model.out_channels + self.model.out_channels * 2]
+            #h_conv_3 = h_dataset[:, self.model.out_channels * 3: self.model.out_channels * 3 + self.model.out_channels * 3]
 
             self.model.gtm1.initialize(h_conv_1)
             self.model.gtm2.initialize(h_conv_2)
@@ -168,8 +172,8 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         best_gtm_loss_so_far = -1
         gtm_n_epochs_without_improvements = 0
 
+        self.model.eval()  # Pay attention to this
         for epoch in range(n_epochs_gtm):
-            self.model.eval()
 
             epoch_start_time = time.time()
             gtm_losses_batch = np.empty((0, 3))
@@ -185,6 +189,10 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 h_conv_2_batched = h_conv[:,
                            self.model.out_channels:self.model.out_channels + self.model.out_channels]  # x2
                 h_conv_3_batched = h_conv[:,self.model.out_channels * 2:]  # x3
+
+                # ! FENNEL
+                #h_conv_2_batched = h_conv[:, self.model.out_channels:self.model.out_channels + self.model.out_channels * 2]
+                #h_conv_3_batched = h_conv[:, self.model.out_channels * 3: self.model.out_channels * 3 + self.model.out_channels * 3]
 
                 gtm_1_loss = self.model.gtm1.train_aggregator(h_conv_1_batched, epoch, n_epochs_gtm, self.lr_gtm, first_idx, second_idx)
                 gtm_2_loss = self.model.gtm2.train_aggregator(h_conv_2_batched, epoch, n_epochs_gtm, self.lr_gtm, first_idx, second_idx)
@@ -318,6 +326,10 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             fig3.savefig(log_path / Path('Losses_' + curr_time + '.png'))
 
             del h_conv_1, h_conv_2, h_conv_3, y_all, gtm_losses, points
+
+        if self.model.gtm1.learning == 'incremental':
+            del self.model.gtm1.X_inc, self.model.gtm2.X_inc, self.model.gtm3.X_inc, h_dataset
+
 
 
         print(" # READ_OUT TRAIN # ")
