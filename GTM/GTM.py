@@ -71,7 +71,7 @@ class GTM(nn.Module):
         """
         PCA initialization
         """
-        U, S, V = torch.pca_lowrank(t.to(self.device))
+        U, S, V = torch.pca_lowrank(t)
         self.W = torch.linalg.pinv(self.phi).matmul(self.matX).matmul(V[:, :2].T)
         # self.W = nn.Parameter(self.W, requires_grad=False)
 
@@ -125,21 +125,18 @@ class GTM(nn.Module):
         L = sum_n ln(1/K sum_i p(t|x,W,beta))
         """
         with torch.no_grad():
-            if self.learning == 'incremental':
-                R = self.R_inc
+            if self.learning == 'incremental' and X is None:
                 try:
                     X = self.X_inc
                 except AttributeError:
                     return torch.ones_like(self.beta)
-            else:
-                R = self.responsibility(X)
             D = X.shape[1]
-            k1 = (self.beta / (2 * torch.pi)).pow(D / 2)
+            k1 = (self.beta / (2 * torch.pi)).pow(D / 2).add_(1e-6)
             k2 = k1 * torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2,
                                                                compute_mode='donot_use_mm_for_euclid_dist') ** 2).add_(
                 1e-6)
 
-            return torch.log(k2.sum(axis=0) / self.n_latent_variables).sum()
+            return torch.log(k2.sum(axis=0) / self.n_latent_variables).sum() / X.shape[0]
 
     def likelihood(self, X=None):
         """

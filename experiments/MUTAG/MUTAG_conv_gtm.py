@@ -17,7 +17,7 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    test_name = "discard_2_5_GTM"
+    test_name = "discard_2_6_GTM"
     verbose = 1
 
     n_epochs_conv = 200
@@ -26,7 +26,7 @@ if __name__ == '__main__':
     n_classes = 2
     dataset_path = '~/storage/Dataset/'
     dataset_name = 'MUTAG'
-    n_folds = 3
+    n_folds = 10
     test_epoch = 1
 
     n_units = 30
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     lr_fine_tuning = 0.0001
     weight_decay = 0  # 5e-4
     drop_prob = 0  # 0.5
-    batch_size = 8
+    batch_size = 16
 
     gtm_epoch = 30
     gtm_grids_dim = (15, 20)
@@ -46,7 +46,7 @@ if __name__ == '__main__':
 
     # early stopping par
     max_n_epochs_without_improvements = 10
-    early_stopping_threshold = 0.05
+    early_stopping_threshold = 0.001
     early_stopping_threshold_gtm = 0.05
 
     test_name = test_name + \

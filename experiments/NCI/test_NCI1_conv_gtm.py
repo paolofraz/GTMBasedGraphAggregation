@@ -26,27 +26,27 @@ if __name__ == '__main__':
     n_classes = 2
     dataset_path = '~/storage/Dataset/'
     dataset_name = 'NCI1'
-    n_folds = 3  # 10
+    n_folds = 3
     test_epoch = 1
 
-    n_units_list = [50, 75]
-    lr_conv = 0.0005
+    n_units_list = [50]
+    lr_conv = 0.00005
     lr_readout = 0.0005
     lr_fine_tuning = 0.0001
-    drop_prob_list = [0, 0.5]
-    weight_decay_list = [5e-4, 5e-5]
-    batch_size_list = [16, 32]
+    drop_prob_list = [0]
+    weight_decay_list = [5e-5]
+    batch_size_list = [16]
 
     gtm_epoch = 20
-    gtm_grids_dim_list = [(25, 20), (15, 20)]
-    gtm_lr_list = [10, 1, 1e-2, 0]
-    gtm_rbf_list = [8, 12, 18]  # this squared equals the amount of rbf basis functions, default = 10
-    gtm_sigma_list = [None, 1]
+    gtm_grids_dim_list = [(20, 25)]
+    gtm_lr_list = [1e-2]
+    gtm_rbf_list = [12]  # this squared equals the amount of rbf basis functions, default = 10
+    gtm_sigma_list = [1]
     gtm_learning = 'incremental'  # standard or incremental
 
     # early stopping par
-    max_n_epochs_without_improvements = 25
-    early_stopping_threshold = 0.075
+    max_n_epochs_without_improvements = 10
+    early_stopping_threshold = 0.005
     early_stopping_threshold_gtm = 2000
 
     for n_units in n_units_list:

@@ -59,8 +59,8 @@ class GNN_Conv_GTM(torch.nn.Module):
         self.gtm2 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
         self.gtm3 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
         # ! FENNEL
-        self.gtm2 = GTM(out_channels * 2, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
-        self.gtm3 = GTM(out_channels * 3, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
+        #self.gtm2 = GTM(out_channels * 2, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
+        #self.gtm3 = GTM(out_channels * 3, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
 
         # define read_out # TODO fix hardcoded dimension from GTM output (coming from MatM), or set to 2 for 2D punctual result (mean)
         self.out_conv1 = GraphConv(gtm_grid_dims[0] * gtm_grid_dims[1], self.out_channels)
@@ -118,7 +118,7 @@ class GNN_Conv_GTM(torch.nn.Module):
 
     def forward(self, data, conv_train=False, gtm_train=False):
 
-        train_flag = True if conv_train == True else False
+        train_flag = True if (conv_train == True) or not (gtm_train == True) else False
         for component in [self.norm1, self.norm2, self.norm3, self.dropout]:
             component.training = train_flag
 
