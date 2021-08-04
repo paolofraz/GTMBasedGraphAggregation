@@ -161,7 +161,6 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             self.model.gtm3.initialize(h_conv_3)
 
             del h_conv #, h_dataset
-            print("------ GTM PCA Initialized ------")
 
         train_log, test_log, valid_log = prepare_log_files("_gtm_part_" + test_name + "--split-" + str(split_id),
                                                            log_path)

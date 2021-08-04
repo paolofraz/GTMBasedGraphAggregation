@@ -43,13 +43,15 @@ class GTM(nn.Module):
         a = torch.linspace(-1 + 1. / m, 1 - 1. / m, m)
         self.matM = nn.Parameter(torch.cartesian_prod(a, a).to(self.device), requires_grad=False)  # rbf locations
 
-        if sigma is None:
+        if sigma is None or type(sigma) is str:
             # estimate sigma as average min distance among rbfs
             rbfWidth = torch.cdist(self.matM, self.matM, p=2,
                                    compute_mode='donot_use_mm_for_euclid_dist')  # .pow_(2) squared distances [for sigma^2/sigma]
             self.sigma = torch.mean(
                 torch.min(rbfWidth[torch.nonzero(rbfWidth, as_tuple=True)].view(m * m, m * m - 1),
                           dim=1).values).item()  # so it excludes distances = 0 with itself -> there is some issue with self distances https://gitmemory.com/issue/pytorch/pytorch/57690/833204080
+            if type(sigma) is str:
+                self.sigma *= float(sigma)
         else:
             self.sigma = float(sigma)
 
@@ -66,35 +68,38 @@ class GTM(nn.Module):
 
         b = torch.empty(1)
         self.beta = nn.init.ones_(b).to(self.device)
+        print("------ GTM Random Initialized ------")
 
     def initialize(self, t):
         """
         PCA initialization
         """
-        U, S, V = torch.pca_lowrank(t)
-        self.W = torch.linalg.pinv(self.phi).matmul(self.matX).matmul(V[:, :2].T)
-        # self.W = nn.Parameter(self.W, requires_grad=False)
-
-        betainv1 = (S ** 2 / (t.shape[0] - 1))[2].item()  # take L+1 eigenvalue
-        inter_dist = torch.cdist(self.phi.matmul(self.W), self.phi.matmul(self.W),
-                                 compute_mode='donot_use_mm_for_euclid_dist')
-        inter_dist.fill_diagonal_(float('inf'))
-        betainv2 = inter_dist.min(dim=0).values.mean().item() / 2.
-
-        self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)
-        # self.beta = nn.Parameter(self.beta, requires_grad=False)
-
         if self.learning == 'incremental':
             # Initialize R for the whole training set with uniform probability 1/K
             self.R_inc = torch.zeros((self.n_latent_variables, t.shape[0]), device=self.device)  # K x N matrix
             self.R_inc = self.R_inc.fill_(1. / self.n_latent_variables)
             # self.G_inc = torch.diag(self.R_inc.sum(dim=1)) # K x K matrix
-            self.RX_inc = self.R_inc.matmul(t)  # K x D matrix
-            self.X_inc = t
+            self.RX_inc = self.R_inc.matmul(t.to(self.device))  # K x D matrix
+            self.X_inc = t.to(self.device)
             self.second_old = 0
 
-        print("Input dataset size: ", t.shape)
-        self.to_be_initialized = False
+        if self.to_be_initialized == True:
+            U, S, V = torch.pca_lowrank(t.cpu())
+            self.W = torch.linalg.pinv(self.phi).matmul(self.matX).matmul(V.to(self.device)[:, :2].T).to(self.device)
+            # self.W = nn.Parameter(self.W, requires_grad=False)
+
+            betainv1 = (S ** 2 / (t.shape[0] - 1))[2].item()  # take L+1 eigenvalue
+            inter_dist = torch.cdist(self.phi.matmul(self.W), self.phi.matmul(self.W),
+                                     compute_mode='donot_use_mm_for_euclid_dist')
+            inter_dist.fill_diagonal_(float('inf'))
+            betainv2 = inter_dist.min(dim=0).values.mean().item() / 2.
+
+            self.beta = torch.Tensor([1. / max(betainv1, betainv2)]).to(self.device)
+            # self.beta = nn.Parameter(self.beta, requires_grad=False)
+
+            print("Input dataset size: ", t.shape)
+            print("------ GTM PCA Initialized ------")
+            self.to_be_initialized = False
 
     def responsibility(self, X):
         """
@@ -103,7 +108,7 @@ class GTM(nn.Module):
         """
         with torch.no_grad():
             p = torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2,
-                                                         compute_mode='donot_use_mm_for_euclid_dist') ** 2).add_(1e-6)
+                                                         compute_mode='donot_use_mm_for_euclid_dist') ** 2).add_(1e-8)
             return p.div(p.sum(dim=0))
 
     def pdf_data_space(self, X):
@@ -131,10 +136,9 @@ class GTM(nn.Module):
                 except AttributeError:
                     return torch.ones_like(self.beta)
             D = X.shape[1]
-            k1 = (self.beta / (2 * torch.pi)).pow(D / 2).add_(1e-6)
-            k2 = k1 * torch.exp((-self.beta / 2) * torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2,
-                                                               compute_mode='donot_use_mm_for_euclid_dist') ** 2).add_(
-                1e-6)
+            k1 = (self.beta.double() / (2 * torch.pi)).pow(D / 2) #.add_(1e-8)
+            k2 = k1 * torch.exp((-self.beta.double() / 2) * torch.cdist(self.phi.matmul(self.W).double(), X.to(self.device).double(),
+                                                                        compute_mode='donot_use_mm_for_euclid_dist', p=2) ** 2)#.add_(1e-8)
 
             return torch.log(k2.sum(axis=0) / self.n_latent_variables).sum() / X.shape[0]
 
@@ -145,9 +149,12 @@ class GTM(nn.Module):
         This leads to the complete-data log likelihood used in EM Eq (10)
         """
         with torch.no_grad():
-            if self.learning == 'incremental':
+            if self.learning == 'incremental' and X is None:
                 R = self.R_inc
-                X = self.X_inc
+                try:
+                    X = self.X_inc
+                except AttributeError:
+                    return torch.ones_like(self.beta)
             else:
                 R = self.responsibility(X)
             D = X.shape[1]
@@ -155,7 +162,7 @@ class GTM(nn.Module):
             k2 = (torch.cdist(self.phi.matmul(self.W), X.to(self.device), p=2,
                               compute_mode='donot_use_mm_for_euclid_dist') ** 2).mul(-(self.beta.div(2)))
             temp = k2.add(k1) * R
-            return temp.sum()
+            return temp.sum() / X.shape[0]
 
     def transform(self, Xt):
         """
