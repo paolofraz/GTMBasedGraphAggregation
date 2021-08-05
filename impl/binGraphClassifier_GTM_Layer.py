@@ -16,6 +16,8 @@ predict_fn = lambda output: output.max(1, keepdim=True)[1].detach().cpu()  # Tak
 _GTM_LAYERS = 3
 
 # TODO guarda https://pytorch.org/docs/stable/cuda.html
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.allow_tf32 = False
 
 def prepare_log_files(test_name, log_dir):
     '''
@@ -43,7 +45,6 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
     def __init__(self, model, criterion, device='cpu', verbose=0):
         super(modelImplementation_GraphBinClassifier, self).__init__()
-
         self.model = model
         self.criterion = criterion
         self.device = device
@@ -160,7 +161,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
             self.model.gtm2.initialize(h_conv_2)
             self.model.gtm3.initialize(h_conv_3)
 
-            del h_conv #, h_dataset
+            del h_conv#, h_dataset
 
         train_log, test_log, valid_log = prepare_log_files("_gtm_part_" + test_name + "--split-" + str(split_id),
                                                            log_path)
@@ -216,23 +217,22 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 colormap = np.array(['navy', 'firebrick'])
                 y_all = y_all.astype(int)
                 # TODO fix this properly with probabilities
-                points = h_conv_1.cpu().matmul(torch.linalg.pinv(self.model.gtm1.W.cpu())).matmul(self.model.gtm1.matM.cpu())
+                points = h_conv_1.cpu().matmul(torch.linalg.pinv(self.model.gtm1.W.cpu()))[:,:-1].matmul(self.model.gtm1.matM.cpu())
                 axs[0, 0].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
                 axs[0, 0].text(0.01, 0.01, "Beta = "+"{:.4f}".format(self.model.gtm1.beta.item()), verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 0].transAxes)
                 axs[0, 0].set_title("Pre GTM Training - 1st layer")
-                points = h_conv_2.cpu().matmul(torch.linalg.pinv(self.model.gtm2.W.cpu())).matmul(self.model.gtm2.matM.cpu())
+                points = h_conv_2.cpu().matmul(torch.linalg.pinv(self.model.gtm2.W.cpu()))[:,:-1].matmul(self.model.gtm2.matM.cpu())
                 axs[0, 1].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
                 axs[0, 1].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm2.beta.item()),
                                verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 1].transAxes)
                 axs[0, 1].set_title("Pre GTM Training - 2nd layer")
-                points = h_conv_3.cpu().matmul(torch.linalg.pinv(self.model.gtm3.W.cpu())).matmul(self.model.gtm3.matM.cpu())
+                points = h_conv_3.cpu().matmul(torch.linalg.pinv(self.model.gtm3.W.cpu()))[:,:-1].matmul(self.model.gtm3.matM.cpu())
                 axs[0, 2].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
                 axs[0, 2].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm3.beta.item()),
                                verticalalignment='bottom', horizontalalignment='left', transform=axs[0, 2].transAxes)
                 axs[0, 2].set_title("Pre GTM Training - 3rd layer")
 
             if epoch == 1 and self.verbose == 1 and split_id == 0:
-
                 fig2, axs2 = plt.subplots(2,3, figsize = (10,7))
                 fig2.suptitle(test_name)
                 im = axs2[0,0].imshow(
@@ -311,17 +311,17 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 epoch_time_sum = 0
 
         if self.verbose == 1 and split_id == 0:
-            points = h_conv_1.cpu().matmul(torch.linalg.pinv(self.model.gtm1.W.cpu())).matmul(self.model.gtm1.matM.cpu())
+            points = h_conv_1.cpu().matmul(torch.linalg.pinv(self.model.gtm1.W.cpu()))[:,:-1].matmul(self.model.gtm1.matM.cpu())
             axs[1, 0].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
             axs[1, 0].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm1.beta.item()),
                            verticalalignment='bottom', horizontalalignment='left', transform=axs[1, 0].transAxes)
             axs[1, 0].set_title("Post GTM Training - 1st layer")
-            points = h_conv_2.cpu().matmul(torch.linalg.pinv(self.model.gtm2.W.cpu())).matmul(self.model.gtm2.matM.cpu())
+            points = h_conv_2.cpu().matmul(torch.linalg.pinv(self.model.gtm2.W.cpu()))[:,:-1].matmul(self.model.gtm2.matM.cpu())
             axs[1, 1].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
             axs[1, 1].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm2.beta.item()),
                            verticalalignment='bottom', horizontalalignment='left', transform=axs[1, 1].transAxes)
             axs[1, 1].set_title("Post GTM Training - 2nd layer")
-            points = h_conv_3.cpu().matmul(torch.linalg.pinv(self.model.gtm3.W.cpu())).matmul(self.model.gtm3.matM.cpu())
+            points = h_conv_3.cpu().matmul(torch.linalg.pinv(self.model.gtm3.W.cpu()))[:,:-1].matmul(self.model.gtm3.matM.cpu())
             axs[1, 2].scatter(points[:, 0].cpu().detach().numpy(), points[:, 1].cpu().detach().numpy(), c=colormap[y_all])
             axs[1, 2].text(0.01, 0.01, "Beta = " + "{:.4f}".format(self.model.gtm3.beta.item()),
                            verticalalignment='bottom', horizontalalignment='left', transform=axs[1, 2].transAxes)

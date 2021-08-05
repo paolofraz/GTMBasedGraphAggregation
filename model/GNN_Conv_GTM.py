@@ -1,18 +1,17 @@
 import torch
-from torch_geometric.nn.conv import GraphConv
-from GTM.GTM import GTM
-from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp, global_add_pool as gadd
-from torch.functional import F
 from torch.nn.init import eye_
-import numpy as np
-import os
+from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp, global_add_pool as gadd
+from torch_geometric.nn.conv import GraphConv
+
+from GTM.GTM import GTM
 
 
 class GNN_Conv_GTM(torch.nn.Module):
     """
     input = loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, gtm_learning, drop_prob
     """
-    def __init__(self, in_channels, out_channels, n_class=2, gtm_grid_dims=(10, 10), rbf=10, sigma=1, gtm_lr=1e-3, dropout=0, learning='standard', device=None):
+    def __init__(self, in_channels, out_channels, n_class=2, gtm_grid_dims=(10, 10), rbf=10, sigma=1, gtm_lr=1e-3,
+                 dropout=0, learning='standard', device=None):
         super(GNN_Conv_GTM, self).__init__()
 
         if device is None:
@@ -20,47 +19,49 @@ class GNN_Conv_GTM(torch.nn.Module):
         else:
             self.device = device
 
-        self.in_channels = in_channels # equals number of features
-        self.out_channels = out_channels # equals number of neurons (30)
+        self.in_channels = in_channels  # equals number of features
+        self.out_channels = out_channels  # equals number of neurons (30)
         self.n_class = n_class
         self.gtm_grid_dims = gtm_grid_dims
 
-        self.conv0 = GraphConv(self.in_channels, self.in_channels, bias=False) #TODO This is never used?? why here bias (and req_grad) is False? Trick per passare da sparso onehot a valore reale più denso
+        self.conv0 = GraphConv(self.in_channels, self.in_channels, bias=False)  # TODO This is never used?? why here bias (and req_grad) is False? Trick per passare da sparso onehot a valore reale più denso
 
         self.conv1 = GraphConv(self.in_channels, self.out_channels)
         self.conv2 = GraphConv(self.out_channels, out_channels)
         self.conv3 = GraphConv(self.out_channels, out_channels)
         # ! FENNEL
-        #self.conv2 = GraphConv(self.out_channels, out_channels * 2)
-        #self.conv3 = GraphConv(self.out_channels * 2, out_channels * 3)
-
+        # self.conv2 = GraphConv(self.out_channels, out_channels * 2)
+        # self.conv3 = GraphConv(self.out_channels * 2, out_channels * 3)
 
         self.act1 = torch.nn.LeakyReLU()
         self.act2 = torch.nn.LeakyReLU()
         self.act3 = torch.nn.LeakyReLU()
 
-        self.norm1 = torch.nn.BatchNorm1d(self.out_channels)
-        self.norm2 = torch.nn.BatchNorm1d(self.out_channels) #* 2)
-        self.norm3 = torch.nn.BatchNorm1d(self.out_channels) #* 3)
+        self.norm1 = torch.nn.BatchNorm1d(self.out_channels, affine=False, track_running_stats=False)
+        self.norm2 = torch.nn.BatchNorm1d(self.out_channels, affine=False, track_running_stats=False)  # * 2)
+        self.norm3 = torch.nn.BatchNorm1d(self.out_channels, affine=False, track_running_stats=False)  # * 3)
 
         # ! FENNEL
-        #self.norm2 = torch.nn.BatchNorm1d(self.out_channels) #* 2)
-        #self.norm3 = torch.nn.BatchNorm1d(self.out_channels) #* 3)
+        # self.norm2 = torch.nn.BatchNorm1d(self.out_channels) #* 2)
+        # self.norm3 = torch.nn.BatchNorm1d(self.out_channels) #* 3)
 
         self.dropout = torch.nn.Dropout(p=dropout)
 
         # define readout of GNN_only model
         # ! FENNEL
-        #self.lin_GNN = torch.nn.Linear((out_channels + out_channels * 2 + self.out_channels * 3) * 3, n_class)
+        # self.lin_GNN = torch.nn.Linear((out_channels + out_channels * 2 + self.out_channels * 3) * 3, n_class)
         self.lin_GNN = torch.nn.Linear(out_channels * 3 * 3, n_class)
 
         # define gtm for read out
-        self.gtm1 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
-        self.gtm2 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
-        self.gtm3 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
+        self.gtm1 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob',
+                        learning=learning, device=self.device)
+        self.gtm2 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob',
+                        learning=learning, device=self.device)
+        self.gtm3 = GTM(out_channels, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob',
+                        learning=learning, device=self.device)
         # ! FENNEL
-        #self.gtm2 = GTM(out_channels * 2, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
-        #self.gtm3 = GTM(out_channels * 3, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
+        # self.gtm2 = GTM(out_channels * 2, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
+        # self.gtm3 = GTM(out_channels * 3, out_size=gtm_grid_dims, m=rbf, sigma=sigma, gtm_lr=gtm_lr, method='full_prob', learning=learning, device=self.device)
 
         # define read_out # TODO fix hardcoded dimension from GTM output (coming from MatM), or set to 2 for 2D punctual result (mean)
         self.out_conv1 = GraphConv(gtm_grid_dims[0] * gtm_grid_dims[1], self.out_channels)
@@ -71,7 +72,7 @@ class GNN_Conv_GTM(torch.nn.Module):
         self.out_norm2 = torch.nn.BatchNorm1d(self.out_channels)
         self.out_norm3 = torch.nn.BatchNorm1d(self.out_channels)
 
-        self.lin_out = torch.nn.Linear(self.out_channels * 3 * 3, n_class) # TODO output ha prima dimensione il batch e seconda il one hot per classe
+        self.lin_out = torch.nn.Linear(self.out_channels * 3 * 3, n_class)  # TODO output ha prima dimensione il batch e seconda il one hot per classe
         self.out_fun = torch.nn.LogSoftmax(dim=1)
 
         # for name, param in self.named_parameters():
@@ -118,18 +119,18 @@ class GNN_Conv_GTM(torch.nn.Module):
 
     def forward(self, data, conv_train=False, gtm_train=False):
 
-        train_flag = True if (conv_train == True) or not (gtm_train == True) else False
-        for component in [self.norm1, self.norm2, self.norm3, self.dropout]:
-            component.training = train_flag
+        # train_flag = True if (conv_train == True) or not (gtm_train == True) else False
+        # for component in [self.norm1, self.norm2, self.norm3, self.dropout]:
+        #    component.training = train_flag
 
         x = data.x
 
         edge_index = data.edge_index
 
-        x1 = self.norm1(self.act1(self.conv1(x, edge_index))) # Eq (6): We start considering graph convolution layers to provide a representation for each node in the graphs
+        x1 = self.norm1(self.act1(self.conv1(x, edge_index)))  # Eq (6): We start considering graph convolution layers to provide a representation for each node in the graphs
         x = self.dropout(x1)
 
-        x2 = self.norm2(self.act2(self.conv2(x, edge_index))) # Eq (7): We stack 3 graph convolution layers
+        x2 = self.norm2(self.act2(self.conv2(x, edge_index)))  # Eq (7): We stack 3 graph convolution layers
         x = self.dropout(x2)
 
         x3 = self.norm3(self.act3(self.conv3(x, edge_index)))
@@ -144,39 +145,38 @@ class GNN_Conv_GTM(torch.nn.Module):
         conv_batch_add = gadd(h_conv, data.batch)
         conv_batch_max = gmp(h_conv, data.batch)
 
-        h_GNN = torch.cat([conv_batch_avg, conv_batch_add, conv_batch_max], dim=1) # Eq (22)
+        h_GNN = torch.cat([conv_batch_avg, conv_batch_add, conv_batch_max], dim=1)  # Eq (22)
 
-        gnn_out = self.out_fun(self.lin_GNN(h_GNN)) # Eq (23,24)
+        gnn_out = self.out_fun(self.lin_GNN(h_GNN))  # Eq (23,24)
 
         if conv_train:
             return None, None, gnn_out
 
         # keep only gnn_out & h_conv
-        del h_GNN, conv_batch_avg, conv_batch_add, conv_batch_max # TODO is it logically correct? wtb backpropagation?
+        del h_GNN, conv_batch_avg, conv_batch_add, conv_batch_max
 
         # GTM
-        _, gtm_out_1 = self.gtm1(x1) # Eq (8)
-        _, gtm_out_2 = self.gtm2(x2) # gtm_out has size (#node representations ,#latent variables)
+        _, gtm_out_1 = self.gtm1(x1)  # Eq (8)
+        _, gtm_out_2 = self.gtm2(x2)  # gtm_out has size (#node representations ,#latent variables)
         _, gtm_out_3 = self.gtm3(x3)
 
-        with torch.no_grad(): # Set Max = 1 for GTM outputs (so they are bounded in [0,1])
-            gtm_out_1 /= gtm_out_1.max(axis=1, keepdim=True).values
-            gtm_out_2 /= gtm_out_2.max(axis=1, keepdim=True).values
-            gtm_out_3 /= gtm_out_3.max(axis=1, keepdim=True).values
-
+        # Set Max = 1 for GTM outputs (so they are bounded in [0,1])
+        gtm_out_1 /= gtm_out_1.max(axis=1, keepdim=True).values
+        gtm_out_2 /= gtm_out_2.max(axis=1, keepdim=True).values
+        gtm_out_3 /= gtm_out_3.max(axis=1, keepdim=True).values
 
         # READOUT
-        h1 = self.out_norm1(self.act1(self.out_conv1(gtm_out_1, edge_index))) # Eq (9)
+        h1 = self.out_norm1(self.act1(self.out_conv1(gtm_out_1, edge_index)))  # Eq (9)
         h2 = self.out_norm2(self.act2(self.out_conv2(gtm_out_2, edge_index)))
         h3 = self.out_norm3(self.act3(self.out_conv3(gtm_out_3, edge_index)))
 
         gtm_out_conv = torch.cat([h1, h2, h3], dim=1)
 
-        gtm_batch_avg = gap(gtm_out_conv, data.batch) # Aggregates w.r.t belonging batch
+        gtm_batch_avg = gap(gtm_out_conv, data.batch)  # Aggregates w.r.t belonging batch
         gtm_batch_add = gadd(gtm_out_conv, data.batch)
         gtm_batch_max = gmp(gtm_out_conv, data.batch)
 
-        h = torch.cat([gtm_batch_avg, gtm_batch_add, gtm_batch_max], dim=1) # Eq (11)
+        h = torch.cat([gtm_batch_avg, gtm_batch_add, gtm_batch_max], dim=1)  # Eq (11)
 
         h = self.out_fun(self.lin_out(h))
 

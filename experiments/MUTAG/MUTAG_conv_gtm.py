@@ -17,7 +17,7 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    test_name = "discard_2_6_GTM"
+    test_name = "discard_3_GTM"
     verbose = 1
 
     n_epochs_conv = 200
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     gtm_grids_dim = (15, 20)
     gtm_lr = 0.01 #0.001  # called alpha or lambda in papers
     gtm_rbf = 12  # this squared equals the amount of rbf basis functions, default = 10
-    gtm_sigma = None
+    gtm_sigma = '2' # use string type for multiplier, float for absolute value
     gtm_learning = 'incremental' # standard or incremental
 
     # early stopping par

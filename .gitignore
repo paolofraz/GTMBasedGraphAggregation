@@ -6,4 +6,5 @@
 .directory/
 .idea/
 *.out
+*.png
 
