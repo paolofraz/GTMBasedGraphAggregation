@@ -16,7 +16,7 @@ if __name__ == '__main__':
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 6
-    dataset_path = '~/Dataset/ENZYMES'
+    dataset_path = '~/storage/Dataset/ENZYMES'
     dataset_name = 'ENZYMES'
     n_folds = 10
     test_epoch = 1
@@ -79,8 +79,7 @@ if __name__ == '__main__':
 
     criterion = torch.nn.NLLLoss()
 
-    dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds,
-                                                  batch_size)
+    dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds, batch_size)
     for split_id, split in enumerate(dataset_cv_splits):
         loader_train = split[0]
         loader_test = split[1]

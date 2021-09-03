@@ -1,13 +1,14 @@
 import os
 import sys
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 import torch
 
-from model.GNN_Conv_SOM_deep_readout import GNN_Conv_SOM
+from model.GNN_Conv_SOM import GNN_Conv_SOM
 from impl.binGraphClassifier_SOM_Layer import modelImplementation_GraphBinClassifier
-from utils.utils import printParOnFile
+from utils.utils import printParOnFile, longname
 from data_reader.cross_validation_reader import getcross_validation_split
 
 if __name__ == '__main__':
@@ -16,30 +17,29 @@ if __name__ == '__main__':
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
-    dataset_path = '~/storage/Dataset/PROTEINS'
-    dataset_name = 'PROTEINS'
-    n_folds = 10
+    dataset_path = '~/storage/Dataset/'
+    dataset_name = 'MUTAG'
+    n_folds = 3#10
     test_epoch = 1
 
-
-    n_units = 20
-    lr_conv = 0.0001
-    lr_readout = 0.0001
+    n_units = 30
+    lr_conv = 0.0005
+    lr_readout = 0.0005
     lr_fine_tuning = 0.0001
     weight_decay = 5e-4
     drop_prob = 0.5
-    batch_size = 32
+    batch_size = 16#32
 
-    som_epoch=500
-    som_grids_dim = (15,10)
-    som_lr=0.005
+    som_epoch = 500
+    som_grids_dim = (12, 9)
+    som_lr = 0.005
 
     # early stopping par
-    max_n_epochs_without_improvements = 20
+    max_n_epochs_without_improvements = 25
     early_stopping_threshold = 0.075
     early_stopping_threshold_som = 0.02
 
-    test_name = "GNN_Conv_Som_deep_readout"
+    test_name = "GNN_Conv_Som"
 
     test_name = test_name + \
                 "_data-" + dataset_name + \
@@ -55,9 +55,9 @@ if __name__ == '__main__':
                 "_som_grid-" + str(som_grids_dim[0]) + "_" + str(som_grids_dim[1]) + \
                 "_som_lr-" + str(som_lr)
 
-    training_log_dir = os.path.join("./test_log/", test_name)
-    if not os.path.exists(training_log_dir):
-        os.makedirs(training_log_dir)
+    training_log_dir = Path.cwd() / "test_log" / test_name
+    training_log_dir = longname(training_log_dir)
+    training_log_dir.mkdir(parents=True, exist_ok=True)
 
     printParOnFile(test_name=test_name, log_dir=training_log_dir,
                    par_list={"dataset_name": dataset_name,

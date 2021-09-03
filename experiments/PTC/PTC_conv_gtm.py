@@ -6,14 +6,21 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 import torch
 
-from model.GNN_Conv_SOM import GNN_Conv_SOM
-from impl.binGraphClassifier_SOM_Layer import modelImplementation_GraphBinClassifier
+from model.GNN_Conv_GTM import GNN_Conv_GTM
+from impl.binGraphClassifier_GTM_Layer import modelImplementation_GraphBinClassifier
 from utils.utils import printParOnFile, longname
 from data_reader.cross_validation_reader import getcross_validation_split
+import gc
 
 if __name__ == '__main__':
 
-    n_epochs_conv = 500
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    test_name = "discard_"
+    verbose = 1
+
+    n_epochs_conv = 200
     n_epochs_readout = 500
     n_epochs_fine_tuning = 500
     n_classes = 2
@@ -22,100 +29,105 @@ if __name__ == '__main__':
     n_folds = 10
     test_epoch = 1
 
-
     n_units = 30
-    lr_conv = 0.0005
+    lr_conv = 0.00005  # 0.0005
     lr_readout = 0.0005
     lr_fine_tuning = 0.0001
     weight_decay = 5e-4
     drop_prob = 0.5
-    batch_size = 32
+    batch_size = 8
 
-    som_epoch=500
-    som_grids_dim = (12, 9)
-    som_lr=0.005
+    gtm_epoch = 100
+    gtm_grids_dim = (18, 20)
+    gtm_lr = 0.0001  # called alpha or lambda in papers
+    gtm_rbf = 12  # this squared equals the amount of rbf basis functions, default = 10
+    gtm_learning = 'incremental' # standard or incremental
 
     # early stopping par
-    max_n_epochs_without_improvements = 25
+    max_n_epochs_without_improvements = 20
     early_stopping_threshold = 0.075
-    early_stopping_threshold_som = 0.02
-
-
-    test_name = "GNN_Conv_Som"
+    early_stopping_threshold_gtm = 0.05
 
     test_name = test_name + \
                 "_data-" + dataset_name + \
                 "_nFold-" + str(n_folds) + \
                 "_lr_conv-" + str(lr_conv) + \
-                "_lr_som-" + str(som_lr) + \
+                "_lr_gtm-" + str(gtm_lr) + \
                 "_lr_readout-" + str(lr_readout) + \
                 "_lr_fine_tuning-" + str(lr_fine_tuning) + \
                 "_drop_prob-" + str(drop_prob) + \
                 "_weight-decay-" + str(weight_decay) + \
                 "_batchSize-" + str(batch_size) + \
                 "_nHidden-" + str(n_units) + \
-                "_som_grid-" + str(som_grids_dim[0]) + "_" + str(som_grids_dim[1]) + \
-                "_som_lr-" + str(som_lr)
+                "_gtm_grid-" + str(gtm_grids_dim[0]) + "_" + str(gtm_grids_dim[1]) + \
+                "_gtm_lr-" + str(gtm_lr) + \
+                "_gtm_lear-" + str(gtm_learning) + \
+                "_gtm_rbf-" + str(gtm_rbf)
 
-    if sys.platform = 'win32':
+    if sys.platform == 'win32':
         # Windows compatible paths
         training_log_dir = Path.cwd() / "test_log" / test_name
         training_log_dir = longname(training_log_dir)
         training_log_dir.mkdir(parents=True, exist_ok=True)
-    elif sys.platform = 'linux':
-        training_log_dir = os.path.join("./test_log/", test_name)
+    elif sys.platform == 'linux':
+        training_log_dir = os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN", test_name)
+        print("Dir: ", os.path.join(os.getcwd(), "Thesis_GTM/experiments/TORUN"))
         if not os.path.exists(training_log_dir):
             os.makedirs(training_log_dir)
+    else:
+        sys.exit("Unsupported OS (Windows or Linux only)")
+
+    print("Name: ", test_name)
 
     printParOnFile(test_name=test_name, log_dir=training_log_dir,
                    par_list={"dataset_name": dataset_name,
                              "n_fold": n_folds,
                              "learning_rate_conv": lr_conv,
-                             "learning_rate_som": som_lr,
+                             "learning_rate_gtm": gtm_lr,
                              "learning_rate_read_out": lr_readout,
                              "learning_rate_fine_tuning": lr_fine_tuning,
                              "drop_prob": drop_prob,
                              "weight_decay": weight_decay,
                              "batch_size": batch_size,
                              "n_hidden": n_units,
-                             "som_grid_dims": som_grids_dim,
-                             "som_lr": som_lr,
+                             "gtm_grid_dims": gtm_grids_dim,
+                             "gtm_lr": gtm_lr,
+                             "gtm_rbf": gtm_rbf,
+                             "gtm_lear": gtm_learning,
                              "test_epoch": test_epoch})
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     criterion = torch.nn.NLLLoss()
 
-    dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds, batch_size)
+    dataset_cv_splits = getcross_validation_split(dataset_path, dataset_name, n_folds,
+                                                  batch_size)  # TODO now it doesn't load (continuous) node attributes, is it correct? It add the diameter tough, lascialo. For MUTAG input is OneHot as desired
     for split_id, split in enumerate(dataset_cv_splits):
         loader_train = split[0]
         loader_test = split[1]
         loader_valid = split[2]
 
-        model = GNN_Conv_SOM(loader_train.dataset.num_features, n_units, n_classes, som_grids_dim, drop_prob).to(
-            device)
+        model = GNN_Conv_GTM(loader_train.dataset.num_features, n_units, n_classes, gtm_grids_dim, gtm_rbf, gtm_lr,
+                             drop_prob, gtm_learning, device).to(device)
 
         model_impl = modelImplementation_GraphBinClassifier(model=model,
                                                             criterion=criterion,
-                                                            device=device).to(device)
+                                                            device=device,
+                                                            verbose=verbose).to(device)
 
         model_impl.set_optimizer(lr_conv=lr_conv,
-                                 lr_som=som_lr,
-                                 lr_reaout=lr_readout,
+                                 lr_gtm=gtm_lr,
+                                 lr_readout=lr_readout,
                                  lr_fine_tuning=lr_fine_tuning,
                                  weight_decay=weight_decay)
 
-        model_impl.train_test_model(split_id=split_id,
-                                    loader_train=loader_train,
-                                    loader_test=loader_test,
-                                    loader_valid=loader_valid,
-                                    n_epochs_conv=n_epochs_conv,
-                                    n_epochs_readout=n_epochs_readout,
-                                    n_epochs_fine_tuning=n_epochs_fine_tuning,
-                                    n_epochs_som=som_epoch,
-                                    test_epoch=test_epoch,
+        model_impl.train_test_model(split_id=split_id, loader_train=loader_train, loader_test=loader_test,
+                                    loader_valid=loader_valid, n_epochs_conv=n_epochs_conv,
+                                    n_epochs_readout=n_epochs_readout, n_epochs_fine_tuning=n_epochs_fine_tuning,
+                                    n_epochs_gtm=gtm_epoch, test_epoch=test_epoch,
                                     early_stopping_threshold=early_stopping_threshold,
-                                    early_stopping_threshold_som=early_stopping_threshold_som,
+                                    early_stopping_threshold_gtm=early_stopping_threshold_gtm,
                                     max_n_epochs_without_improvements=max_n_epochs_without_improvements,
-                                    test_name=test_name,
-                                    log_path=training_log_dir)
+                                    test_name=test_name, log_path=training_log_dir)
+
+        break
