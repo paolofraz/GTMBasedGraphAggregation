@@ -6,8 +6,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 import torch
 
-from model.GNN_Conv_GTM import GNN_Conv_GTM
-from impl.binGraphClassifier_GTM_Layer import modelImplementation_GraphBinClassifier
+from model.funnel_GNN_Conv_GTM import GNN_Conv_GTM
+from impl.funnel_binGraphClassifier_GTM_Layer import modelImplementation_GraphBinClassifier
 from utils.utils import printParOnFile, longname
 from data_reader.cross_validation_reader import getcross_validation_split
 import gc
@@ -17,37 +17,38 @@ if __name__ == '__main__':
     gc.collect()
     torch.cuda.empty_cache()
 
-    name = "discard"
-    verbose = 1
+    name = "Test2_BNfix"
+    verbose = 0
+    load_old = False
 
-    n_epochs_conv = 100  # 500
-    n_epochs_readout = 100  # 500
-    n_epochs_fine_tuning = 100  # 500
+    n_epochs_conv = 1
+    n_epochs_readout = 1
+    n_epochs_fine_tuning = 1
     n_classes = 2
     dataset_path = '~/storage/Dataset/'
     dataset_name = 'NCI1'
-    n_folds = 3
+    n_folds = 10
     test_epoch = 1
 
     n_units_list = [50]
-    lr_conv = 0.00005
+    lr_conv = 0.0005
     lr_readout = 0.0005
     lr_fine_tuning = 0.0001
-    drop_prob_list = [0]
-    weight_decay_list = [5e-5]
-    batch_size_list = [16]
+    drop_prob_list = [0.5]
+    weight_decay_list = [5e-4]
+    batch_size_list = [32]
 
-    gtm_epoch = 20
-    gtm_grids_dim_list = [(20, 25)]
-    gtm_lr_list = [1e-2]
+    gtm_epoch = 0
+    gtm_grids_dim_list = [(15, 20)]
+    gtm_lr_list = [0.1]
     gtm_rbf_list = [12]  # this squared equals the amount of rbf basis functions, default = 10
-    gtm_sigma_list = [1]
+    gtm_sigma_list = [None]
     gtm_learning = 'incremental'  # standard or incremental
 
     # early stopping par
-    max_n_epochs_without_improvements = 10
-    early_stopping_threshold = 0.005
-    early_stopping_threshold_gtm = 2000
+    max_n_epochs_without_improvements = 25
+    early_stopping_threshold = 0.075
+    early_stopping_threshold_gtm = 0.01
 
     for n_units in n_units_list:
         for batch_size in batch_size_list:
@@ -131,7 +132,8 @@ if __name__ == '__main__':
                                         model_impl = modelImplementation_GraphBinClassifier(model=model,
                                                                                             criterion=criterion,
                                                                                             device=device,
-                                                                                            verbose=verbose).to(device)
+                                                                                            verbose=verbose,
+                                                                                            load_old=load_old).to(device)
 
                                         model_impl.set_optimizer(lr_conv=lr_conv,
                                                                  lr_gtm=gtm_lr,
@@ -150,5 +152,3 @@ if __name__ == '__main__':
                                                                     early_stopping_threshold_gtm=early_stopping_threshold_gtm,
                                                                     max_n_epochs_without_improvements=max_n_epochs_without_improvements,
                                                                     test_name=test_name, log_path=training_log_dir)
-
-                                        break

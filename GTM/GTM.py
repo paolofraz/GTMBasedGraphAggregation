@@ -49,7 +49,7 @@ class GTM(nn.Module):
         self.prev_likelihood_ = -float('inf')
         self.gtm_lr = torch.Tensor([gtm_lr]).to(
             self.device)  # regularization, = lambda in paper TODO fix with adaptive value as in SOM
-        self.to_be_initialized = True  # True -> PCA, else random
+        self.to_be_initialized = False  # True -> PCA, else random
 
         a = torch.linspace(-1, 1, out_size[0])
         b = torch.linspace(-1, 1, out_size[1])
@@ -68,6 +68,7 @@ class GTM(nn.Module):
                 self.sigma *= float(sigma)
         else:
             self.sigma = float(sigma)
+        print("Sigma = ", self.sigma)
 
         # Create matrix of RBF functions (plus one dimension to include a term for bias)
         d = torch.cdist(self.matX, self.matM, p=2, compute_mode='donot_use_mm_for_euclid_dist').pow(2)  # squared distances
@@ -301,7 +302,7 @@ class GTM(nn.Module):
 
                 # estimate inverse variance beta INCREMENTALLY
                 # beta_new = ( beta^-1 + ( a - b ) / ND )^-1
-                self.beta_old = self.beta.clone()
+                # self.beta_old = self.beta.clone()
                 a = torch.cdist(self.phi.matmul(self.W), x, p=2, compute_mode='donot_use_mm_for_euclid_dist').pow(2).mul(
                     self.R_inc[:, first:second]).sum()
                 b = torch.cdist(self.phi.matmul(W_old), x, p=2, compute_mode='donot_use_mm_for_euclid_dist').pow(2).mul(
