@@ -18,8 +18,8 @@ predict_fn = lambda output: output.max(1, keepdim=True)[1].detach().cpu()  # Tak
 _GTM_LAYERS = 3
 
 # TODO guarda https://pytorch.org/docs/stable/cuda.html
-#torch.backends.cuda.matmul.allow_tf32 = False
-#torch.backends.cudnn.allow_tf32 = False
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.allow_tf32 = False
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 def prepare_log_files(test_name, log_dir):
@@ -147,12 +147,15 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
 
         # --- GTM PCA Initialization ---
         self.model.eval()
+        ds = loader_train.batch_sampler.sampler.data_source
+        rnd_sampler = loader_train.batch_sampler.sampler
+        loader_train.batch_sampler.sampler = torch.utils.data.SequentialSampler(ds)
         with torch.no_grad():
-            h_dataset = torch.empty((0, self.model.out_channels * 6), device='cuda')
+            h_dataset = torch.empty((0, self.model.out_channels * 6), device='cpu')
             for batch in loader_train:
                 data = batch.to(self.device)
                 _, h_conv, _ = self.model(data, gtm_train=True)
-                h_dataset = torch.cat((h_dataset, h_conv), 0)
+                h_dataset = torch.cat((h_dataset, h_conv.cpu()), 0)
                 if self.verbose == 1 and split_id == 0:
                     _, reps = torch.unique(data.batch.data, sorted=True, return_counts=True)
                     y_all = np.append(y_all, np.repeat(data.y.detach().cpu().numpy(), reps.cpu().numpy()))
@@ -280,11 +283,14 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 print("split : ", split_id, " -- epoch : ", epoch, " -- loss: ", train_loss, " -- valid loss: ",
                       valid_loss, " (", [gtm_v_1, gtm_v_2, gtm_v_3], ")")
 
-                train_log.write("{:d}\t{:d}\t{:.8f}\t{:.8f}\t{:.8f}\t{:.8f}\n".format(epoch, split_id, valid_loss,
-                                                                                      # 0,  # loss_train_set,
-                                                                                      0,  # acc_train_set,
-                                                                                      epoch_time_sum / test_epoch,
-                                                                                      train_loss))
+                train_log.write(
+                    "{:d}\t{:d}\t{:.8f}\t{:.8f}\t{:.8f}\t{:.8f}\n".format(
+                        epoch,
+                        split_id,
+                        valid_loss, #0,  # loss_train_set,
+                        0,  # acc_train_set,
+                        epoch_time_sum / test_epoch,
+                        train_loss))
 
                 train_log.flush()
 
@@ -368,11 +374,21 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         # load best model from previous step
         self.load_model(test_name)
         self.stop_grad("readout")
-        self.training_phase(n_epochs=n_epochs_readout, optimizer=self.out_optimizer, loader_train=loader_train,
-                            loader_test=loader_test, loader_valid=loader_valid, test_epoch=test_epoch,
-                            log_file_name=test_name, split_id=split_id, log_path=log_path, use_conv_out=False,
-                            test_name=test_name, early_stopping_threshold=early_stopping_threshold,
-                            max_n_epochs_without_improvements=max_n_epochs_without_improvements)
+        loader_train.batch_sampler.sampler = rnd_sampler
+        self.training_phase(n_epochs=n_epochs_readout,
+                            optimizer=self.out_optimizer,
+                            loader_train=loader_train,
+                            loader_test=loader_test,
+                            loader_valid=loader_valid,
+                            test_epoch=test_epoch,
+                            log_file_name=test_name,
+                            split_id=split_id,
+                            log_path=log_path,
+                            use_conv_out=False,
+                            test_name=test_name,
+                            early_stopping_threshold=early_stopping_threshold,
+                            max_n_epochs_without_improvements=max_n_epochs_without_improvements
+                            )
 
         print(" # FINE TUNING # ")
         if torch.cuda.is_available(): torch.cuda.empty_cache()
@@ -380,10 +396,17 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
         # load best model from previous step
         self.load_model(test_name)
         self.stop_grad("fine_tuning")
-        self.training_phase(n_epochs=n_epochs_fine_tuning, optimizer=self.fine_tune_optimizer,
-                            loader_train=loader_train, loader_test=loader_test, loader_valid=loader_valid,
-                            test_epoch=test_epoch, log_file_name="_fine_tuning_" + test_name, split_id=split_id,
-                            log_path=log_path, use_conv_out=False, test_name=test_name,
+        self.training_phase(n_epochs=n_epochs_fine_tuning,
+                            optimizer=self.fine_tune_optimizer,
+                            loader_train=loader_train,
+                            loader_test=loader_test,
+                            loader_valid=loader_valid,
+                            test_epoch=test_epoch,
+                            log_file_name="_fine_tuning_" + test_name,
+                            split_id=split_id,
+                            log_path=log_path,
+                            use_conv_out=False,
+                            test_name=test_name,
                             early_stopping_threshold=early_stopping_threshold,
                             max_n_epochs_without_improvements=max_n_epochs_without_improvements)
 
@@ -424,8 +447,7 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 loss.backward()
                 optimizer.step()
 
-                train_loss += loss.item() * len(
-                    out)  # TODO why * len(out)? Is it for averaging over batches? Ho una loss per grafo? dim(out)? numbrafi x targhet (=2)
+                train_loss += loss.item() * len(out) # TODO why * len(out)? Is it for averaging over batches? Ho una loss per grafo? dim(out)? numbrafi x targhet (=2)
                 n_samples += len(out)
 
             epoch_time = time.time() - epoch_start_time
@@ -463,16 +485,24 @@ class modelImplementation_GraphBinClassifier(torch.nn.Module):
                 train_log.flush()
 
                 test_log.write(
-                    "{:d}\t{:d}\t{:.8f}\t{:.8f}\t{:.8f}\t{:.8f}\n".format(epoch, split_id, loss_test_set, acc_test_set,
-                                                                          epoch_time_sum / test_epoch,
-                                                                          train_loss / n_samples))
+                    "{:d}\t{:d}\t{:.8f}\t{:.8f}\t{:.8f}\t{:.8f}\n".format(
+                        epoch,
+                        split_id,
+                        loss_test_set,
+                        acc_test_set,
+                        epoch_time_sum / test_epoch,
+                        train_loss / n_samples))
 
                 test_log.flush()
 
-                valid_log.write("{:d}\t{:d}\t{:.8f}\t{:.8f}\t{:.8f}\t{:.8f}\n".format(epoch, split_id, loss_valid_set,
-                                                                                      acc_valid_set,
-                                                                                      epoch_time_sum / test_epoch,
-                                                                                      train_loss / n_samples))
+                valid_log.write(
+                    "{:d}\t{:d}\t{:.8f}\t{:.8f}\t{:.8f}\t{:.8f}\n".format(
+                        epoch,
+                        split_id,
+                        loss_valid_set,
+                        acc_valid_set,
+                        epoch_time_sum / test_epoch,
+                        train_loss / n_samples))
 
                 valid_log.flush()
 

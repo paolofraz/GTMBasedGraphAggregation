@@ -17,20 +17,34 @@ def compute_best_validation_acc(log_file, split_result, n_epoch, test_epoch):
     for i, split in enumerate(split_result):
         valid_res = split[2]
         # get loss column
-        acc_list = valid_res[0:n_epoch, 3]
+        try:
+            acc_list = valid_res[0:n_epoch, 3]
+        except IndexError:
+            acc_list = valid_res[3]
 
         # get the index (epoch) of min loss
         val_epoch_list = np.argwhere(
             acc_list == np.amax(acc_list))  # get the list of the min (usefull if there are more epoch with the same acc
 
         # if there is many valid epoch with thesame value'ill take the best one base on loss
-        loss_list = valid_res[0:n_epoch, 2]
-        val_epoch = val_epoch_list[np.argmin(loss_list[val_epoch_list])]
+        try:
+            loss_list = valid_res[0:n_epoch, 2]
+        except IndexError:
+            loss_list = valid_res[2]
+
+        try:
+            val_epoch = val_epoch_list[np.argmin(loss_list[val_epoch_list])]
+        except IndexError:
+            val_epoch = 0
 
         # if there is many valid epoch with thesame value'ill take the first one
 
         # acc col i the row 3 of the table
-        acc = valid_res[val_epoch, 3]
+        try:
+            acc = valid_res[val_epoch, 3]
+        except IndexError:
+            acc = valid_res[3]
+
 
         split_valid_epoch.append(val_epoch)
 
@@ -47,10 +61,10 @@ def compute_best_validation_acc(log_file, split_result, n_epoch, test_epoch):
 
 if __name__ == '__main__':
 
-    grid_folder = "C:/Users/pfrazzetto00/PycharmProjects/GTMBasedGraphAggregation/experiments/MUTAG/Analysis"
+    grid_folder = r'C:\Users\paolo\PycharmProjects\GTMBasedGraphAggregation\experiments\TORUN\CPUTest_BNfix'
     grid_folder = longname(Path(grid_folder))
 
-    n_split = 3  # 10
+    n_split = 10
 
     n_epoch = 500
     test_epoch = 1
@@ -103,7 +117,7 @@ if __name__ == '__main__':
         log_file.write("\n")
 
         perform_validation_acc(log_file, split_result, n_epoch, test_epoch)
-        plot_graph("TEST_", validation_folder, n_epoch, test_epoch, split_result, n_split)
+        #plot_graph("TEST_", validation_folder, n_epoch, test_epoch, split_result, n_split)
 
         # valid result of the first GNN
 
@@ -112,7 +126,7 @@ if __name__ == '__main__':
 
         perform_validation_acc(log_file_pre_gnn, split_result, n_epoch, test_epoch)
 
-        plot_graph("PRE_GNN_", validation_folder, n_epoch, test_epoch, split_result, n_split)
+        #plot_graph("PRE_GNN_", validation_folder, n_epoch, test_epoch, split_result, n_split)
 
         # valid fine tuning results
 
@@ -120,7 +134,7 @@ if __name__ == '__main__':
         split_result = load_file(best_test_folder, best_test, n_split, "_fine_tuning_")
 
         perform_validation_acc(log_file_pre_gnn, split_result, n_epoch, test_epoch)
-        plot_graph("FINE_TUNE_GNN_", validation_folder, n_epoch, test_epoch, split_result, n_split)
+        #plot_graph("FINE_TUNE_GNN_", validation_folder, n_epoch, test_epoch, split_result, n_split)
 
     print("---SELECT BEST RESULT---")
     best_result_index = np.argmax(np.asarray(validation_test_results))

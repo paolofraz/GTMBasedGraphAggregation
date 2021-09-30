@@ -61,15 +61,24 @@ def perform_validation_acc(log_file, split_result, n_epoch, test_epoch):
     for i, split in enumerate(split_result):
         valid_res = split[2]
         # get loss column
-        acc_list = valid_res[0:n_epoch, 3]
+        try:
+            acc_list = valid_res[0:n_epoch, 3]
+        except IndexError:
+            acc_list = valid_res[3]
 
         # get the index (epoch) of min loss
         val_epoch_list = np.argwhere(
             acc_list == np.amax(acc_list))  # get the list of the min (useful if there are more epoch with the same acc
 
         # if there is many valid epoch with the same value it will take the best one based on loss
-        loss_list = valid_res[0:n_epoch, 2]
-        val_epoch = val_epoch_list[np.argmin(loss_list[val_epoch_list])]
+        try:
+            loss_list = valid_res[0:n_epoch, 2]
+        except IndexError:
+            loss_list = valid_res[2]
+        try:
+            val_epoch = val_epoch_list[np.argmin(loss_list[val_epoch_list])]
+        except IndexError:
+            val_epoch = 0
 
         # if there is many valid epoch with the same value it will take the first one
         # val_epoch = val_epoch_list[0]
@@ -77,7 +86,10 @@ def perform_validation_acc(log_file, split_result, n_epoch, test_epoch):
         # get accuracy in the test ste of da validated epoch
         test_split = split[1]
         # acc col i the row 3 of the table
-        acc = test_split[val_epoch, 3]
+        try:
+            acc = test_split[val_epoch, 3]
+        except IndexError:
+            acc = test_split[3]
 
         split_valid_epoch.append(val_epoch)
 
@@ -104,7 +116,10 @@ def plot_graph(test_name, result_folder, n_epoch, test_epoch, split_result, n_sp
 
     for i, (split_train, split_test, split_valid) in enumerate(split_result):
         # print(i)
-        actual_n_epoch = split_train[:, :].shape[0]
+        try:
+            actual_n_epoch = split_train[:, :].shape[0]
+        except IndexError:
+            actual_n_epoch = 0
 
         if actual_n_epoch < n_epoch:
             added_epoch_indexs = np.asarray(range(actual_n_epoch, n_epoch)).reshape(-1, 1)

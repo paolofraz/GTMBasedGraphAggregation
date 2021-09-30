@@ -53,7 +53,7 @@ def getcross_validation_split(dataset_path='~/storage/Dataset/MUTAG', dataset_na
 
             loader = DataLoader(gdata,
                                 batch_size=batch_size,
-                                shuffle=False, # True to have the data reshuffled at every epoch, hinders incremental learning
+                                shuffle=True, # True to have the data reshuffled at every epoch, hinders incremental learning
                                 #pin_memory=True,
                                 #persistent_workers=True,
                                 num_workers=0)#, TODO LINUX=Set this to 4; https://github.com/pytorch/pytorch/issues/12831 and https://betterprogramming.pub/how-to-make-your-pytorch-code-run-faster-93079f3c1f7b

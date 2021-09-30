@@ -49,7 +49,7 @@ class GTM(nn.Module):
         self.prev_likelihood_ = -float('inf')
         self.gtm_lr = torch.Tensor([gtm_lr]).to(
             self.device)  # regularization, = lambda in paper TODO fix with adaptive value as in SOM
-        self.to_be_initialized = False  # True -> PCA, else random
+        self.to_be_initialized = True  # True -> PCA, else random
 
         a = torch.linspace(-1, 1, out_size[0])
         b = torch.linspace(-1, 1, out_size[1])
@@ -100,7 +100,7 @@ class GTM(nn.Module):
         if self.learning == 'incremental':
             # Initialize R for the whole training set with uniform probability 1/K
             self.R_inc = torch.empty((self.n_latent_variables, t.shape[0]))  # K x N matrix
-            self.R_inc = self.R_inc.fill_(1. / self.n_latent_variables).to(self.device)
+            self.R_inc = self.R_inc.fill_(1. / self.n_latent_variables)#.to(self.device)
             # self.G_inc = torch.diag(self.R_inc.sum(dim=1)) # K x K matrix
             self.RX_inc = self.R_inc.matmul(t)  # K x D matrix
             self.X_inc = t.to(self.device)
